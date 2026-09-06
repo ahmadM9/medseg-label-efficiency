@@ -48,7 +48,8 @@ def verify(data_root: str | Path) -> list[str]:
             problems.append("splits overlap: some patients appear in more than one split")
         missing = set(all_ids) - set(patients)
         if missing:
-            problems.append(f"{len(missing)} split patients missing on disk, e.g. {sorted(missing)[:3]}")
+            examples = sorted(missing)[:3]
+            problems.append(f"{len(missing)} split patients missing on disk, e.g. {examples}")
 
     for patient in patients:
         pdir = nifti_dir / patient
