@@ -1,0 +1,22 @@
+# data lives outside the repo, linked via scripts/link_data.sh
+/data/
+
+# experiment outputs
+/outputs/
+/mlruns/
+/checkpoints/
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# os / editor
+.DS_Store
+.vscode/
+.idea/

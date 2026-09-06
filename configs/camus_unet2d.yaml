@@ -1,0 +1,8 @@
+# CAMUS 2D segmentation — data settings. Model/training keys are added in
+# later stages; everything path-like is relative to the repo root.
+dataset: camus
+data_root: data/camus
+image_size: [256, 256]
+batch_size: 16
+num_workers: 4
+seed: 42
