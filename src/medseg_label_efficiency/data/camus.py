@@ -14,7 +14,7 @@ scattered list of patient IDs, not a contiguous range.
 
 from pathlib import Path
 
-from monai.data import Dataset
+from monai.data import CacheDataset, Dataset
 from monai.transforms import (
     Compose,
     EnsureChannelFirstd,
@@ -124,9 +124,18 @@ def get_dataset(
     data_root: str | Path,
     split: str,
     image_size: tuple[int, int] = (256, 256),
+    cache_rate: float = 0.0,
+    limit: int = 0,
 ) -> Dataset:
-    """MONAI Dataset over the labeled ED/ES frames of one split."""
-    return Dataset(
-        data=build_samples(data_root, split),
-        transform=get_transforms(train=(split == "train"), image_size=image_size),
-    )
+    """MONAI Dataset over the labeled ED/ES frames of one split.
+
+    cache_rate > 0 switches to a CacheDataset (samples decoded once, kept in
+    RAM). limit > 0 truncates the sample list, for smoke runs and debugging.
+    """
+    samples = build_samples(data_root, split)
+    if limit > 0:
+        samples = samples[:limit]
+    transform = get_transforms(train=(split == "train"), image_size=image_size)
+    if cache_rate > 0:
+        return CacheDataset(data=samples, transform=transform, cache_rate=cache_rate)
+    return Dataset(data=samples, transform=transform)
