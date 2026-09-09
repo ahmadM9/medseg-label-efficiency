@@ -15,6 +15,7 @@ instead of starting over (Kaggle sessions are capped at 12 hours).
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -31,14 +32,23 @@ def run(cmd, **kwargs):
 
 
 def find_data_root() -> Path:
-    for candidate in sorted(INPUT.glob("*")):
-        if (candidate / "database_nifti").is_dir():
-            return candidate
-    raise SystemExit(f"no CAMUS mount with database_nifti found under {INPUT}")
+    # newer Kaggle runtimes mount datasets at /kaggle/input/datasets/<user>/<slug>,
+    # older ones at /kaggle/input/<slug>, so search a few levels; the mount can
+    # also lag behind kernel start, hence the retries
+    patterns = ("*", "*/*", "*/*/*", "*/*/*/*")
+    for attempt in range(6):
+        for pattern in patterns:
+            for candidate in sorted(INPUT.glob(pattern)):
+                if candidate.name == "database_nifti" and candidate.is_dir():
+                    return candidate.parent
+        print(f"attempt {attempt + 1}: no database_nifti yet under {INPUT}", flush=True)
+        time.sleep(20)
+    listing = "\n".join(str(p) for pat in patterns for p in sorted(INPUT.glob(pat))[:15])
+    raise SystemExit(f"no CAMUS mount found under {INPUT}; contents:\n{listing or '(empty)'}")
 
 
 def find_resume_checkpoint() -> Path | None:
-    for prev in sorted(INPUT.glob("*/outputs/camus_unet2d/latest.pt")):
+    for prev in sorted(INPUT.glob("**/outputs/camus_unet2d/latest.pt")):
         return prev.parent
     return None
 
