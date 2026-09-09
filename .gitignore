@@ -17,6 +17,9 @@ __pycache__/
 build/
 dist/
 
+# credentials must never enter the repo
+kaggle.json
+
 # os / editor
 .DS_Store
 .vscode/
