@@ -54,6 +54,7 @@ def find_resume_checkpoint() -> Path | None:
 
 
 def main() -> None:
+    subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"])
     run(["git", "clone", "--depth", "1", REPO_URL, REPO_DIR])
     run([sys.executable, "-m", "pip", "install", "-q", REPO_DIR])
 
