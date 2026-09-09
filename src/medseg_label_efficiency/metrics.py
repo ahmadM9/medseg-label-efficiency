@@ -31,12 +31,20 @@ class MetricAccumulator:
         )
         self.meta: list[dict] = []
 
-    def add(self, pred: torch.Tensor, gt: torch.Tensor, meta: list[dict] | None = None) -> None:
+    def add(
+        self,
+        pred: torch.Tensor,
+        gt: torch.Tensor,
+        meta: list[dict] | None = None,
+        spacing: tuple[float, float] | None = None,
+    ) -> None:
+        """spacing is the physical pixel size (mm per pixel, per axis); when
+        given, HD95 comes out in millimeters instead of pixels."""
         pred_oh = one_hot(pred, NUM_CLASSES)
         gt_oh = one_hot(gt, NUM_CLASSES)
         self.dice(pred_oh, gt_oh)
         if self.hd95 is not None:
-            self.hd95(pred_oh, gt_oh)
+            self.hd95(pred_oh, gt_oh, spacing=list(spacing) if spacing is not None else None)
         if meta is not None:
             self.meta.extend(meta)
 

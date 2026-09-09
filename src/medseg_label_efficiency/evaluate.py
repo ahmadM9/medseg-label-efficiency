@@ -2,6 +2,11 @@
 
     python -m medseg_label_efficiency.evaluate --config configs/camus_unet2d.yaml
 
+Follows the CAMUS challenge protocol: the network predicts at its training
+resolution, the prediction is resized back to the image's original grid, and
+metrics are computed there against the untouched ground truth — Dice as
+overlap, HD95 in millimeters using the pixel spacing from the NIfTI header.
+
 Writes per-sample metrics (CSV), a summary with per-structure Dice/HD95 and
 a breakdown by image quality (JSON), and prints the summary. The same metrics
 module is used later for the SAM 2.1 / MedSAM2 arms.
@@ -15,10 +20,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from monai.data import DataLoader
+import torch.nn.functional as F
+from monai.data.utils import affine_to_spacing
+from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged
 
 from medseg_label_efficiency.config import load_config
-from medseg_label_efficiency.data.camus import get_dataset
+from medseg_label_efficiency.data.camus import build_samples, get_transforms
 from medseg_label_efficiency.metrics import MetricAccumulator
 from medseg_label_efficiency.train import build_model, pick_device
 
@@ -59,26 +66,36 @@ def main() -> None:
     model.load_state_dict(ckpt["model"])
     model.eval()
 
-    ds = get_dataset(cfg["data_root"], args.split, tuple(cfg["image_size"]), 0.0, args.limit)
-    loader = DataLoader(ds, batch_size=cfg["batch_size"], num_workers=cfg["num_workers"])
+    samples = build_samples(cfg["data_root"], args.split)
+    if args.limit:
+        samples = samples[: args.limit]
+    input_transform = get_transforms(train=False, image_size=tuple(cfg["image_size"]))
+    raw_transform = Compose(
+        [LoadImaged(keys=["label"]), EnsureChannelFirstd(keys=["label"])]
+    )
 
     acc = MetricAccumulator(hausdorff=True)
     with torch.no_grad():
-        for batch in loader:
-            images = batch["image"].to(device)
-            labels = batch["label"]
-            pred = torch.argmax(model(images), dim=1, keepdim=True)
-            meta = [
-                {k: batch[k][i] for k in META_KEYS if k in batch}
-                for i in range(images.shape[0])
-            ]
-            acc.add(pred.cpu(), labels, meta)
+        for sample in samples:
+            image = input_transform(dict(sample))["image"].unsqueeze(0).to(device)
+            gt = raw_transform({"label": sample["label"]})["label"]
+            spacing = affine_to_spacing(gt.affine)[:2]
+            pred = torch.argmax(model(image), dim=1, keepdim=True).float().cpu()
+            pred = F.interpolate(pred, size=gt.shape[-2:], mode="nearest")
+            acc.add(
+                pred.long(),
+                gt.as_tensor().long().unsqueeze(0),
+                meta=[{k: sample[k] for k in META_KEYS}],
+                spacing=(float(spacing[0]), float(spacing[1])),
+            )
 
     records = acc.records()
     summary = {
         "checkpoint": str(ckpt_path),
         "split": args.split,
         "n_samples": len(records),
+        "protocol": "prediction resized to native grid; HD95 in mm; "
+        "Dice mean excludes background",
         **acc.summary(),
         "by_quality": quality_breakdown(records),
     }

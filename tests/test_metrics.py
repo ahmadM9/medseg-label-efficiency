@@ -45,6 +45,19 @@ def test_missing_structure_scores_zero_dice():
     assert s["dice_lv_endo"] == 1.0
 
 
+def test_spacing_scales_hd95_to_millimeters():
+    # one-pixel boundary shift; with 0.5 mm pixels the distance must halve
+    gt = torch.zeros(1, 1, 32, 32, dtype=torch.long)
+    gt[..., 10:20, 10:20] = 1
+    pred = torch.zeros_like(gt)
+    pred[..., 10:20, 11:21] = 1
+    px = MetricAccumulator(hausdorff=True)
+    px.add(pred, gt)
+    mm = MetricAccumulator(hausdorff=True)
+    mm.add(pred, gt, spacing=(0.5, 0.5))
+    assert abs(mm.summary()["hd95_lv_endo"] - 0.5 * px.summary()["hd95_lv_endo"]) < 1e-6
+
+
 def test_records_carry_metadata():
     gt = _label_map()
     acc = MetricAccumulator(hausdorff=False)
