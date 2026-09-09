@@ -1,0 +1,22 @@
+# CAMUS 2D baseline at 512x512 — resolution ablation against the 256 config.
+# Batch halved to fit GPU memory at 4x the pixels; everything else identical.
+dataset: camus
+data_root: data/camus
+out_dir: outputs/camus_unet2d_512
+image_size: [512, 512]
+batch_size: 8
+num_workers: 4
+cache_rate: 1.0
+seed: 42
+
+model:
+  channels: [32, 64, 128, 256, 512]
+  strides: [2, 2, 2, 2]
+  num_res_units: 2
+
+training:
+  epochs: 100
+  lr: 1.0e-3
+  weight_decay: 1.0e-5
+  val_interval: 2
+  amp: true
