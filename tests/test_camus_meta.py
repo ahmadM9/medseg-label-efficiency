@@ -1,6 +1,15 @@
 """Tests for CAMUS metadata handling that run without the dataset."""
 
-from medseg_label_efficiency.data.camus import LABELS, parse_info
+from medseg_label_efficiency.data.camus import LABELS, find_nii, parse_info
+
+
+def test_find_nii_prefers_gz_but_accepts_plain(tmp_path):
+    (tmp_path / "a.nii.gz").touch()
+    (tmp_path / "b.nii").touch()
+    assert find_nii(tmp_path, "a").name == "a.nii.gz"
+    assert find_nii(tmp_path, "b").name == "b.nii"
+    # missing files resolve to the canonical name so error messages stay clear
+    assert find_nii(tmp_path, "c").name == "c.nii.gz"
 
 
 def test_parse_info(tmp_path):

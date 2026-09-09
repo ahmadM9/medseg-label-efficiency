@@ -40,6 +40,18 @@ LABELS = {0: "background", 1: "lv_endo", 2: "lv_myo", 3: "left_atrium"}
 VIEWS = ("2CH", "4CH")
 PHASES = ("ED", "ES")
 
+# some hosting platforms (Kaggle) transparently gunzip uploads, so a copy may
+# hold plain .nii files instead of the .nii.gz the platform ships
+NII_EXTENSIONS = (".nii.gz", ".nii")
+
+
+def find_nii(directory: Path, stem: str) -> Path:
+    for ext in NII_EXTENSIONS:
+        path = directory / f"{stem}{ext}"
+        if path.is_file():
+            return path
+    return directory / f"{stem}{NII_EXTENSIONS[0]}"
+
 
 def read_split(data_root: str | Path, split: str) -> list[str]:
     """Return the patient IDs of one official split ("train"/"val"/"test")."""
@@ -72,8 +84,8 @@ def build_samples(data_root: str | Path, split: str) -> list[dict]:
             for phase in PHASES:
                 samples.append(
                     {
-                        "image": str(pdir / f"{patient}_{view}_{phase}.nii.gz"),
-                        "label": str(pdir / f"{patient}_{view}_{phase}_gt.nii.gz"),
+                        "image": str(find_nii(pdir, f"{patient}_{view}_{phase}")),
+                        "label": str(find_nii(pdir, f"{patient}_{view}_{phase}_gt")),
                         "patient": patient,
                         "view": view,
                         "phase": phase,

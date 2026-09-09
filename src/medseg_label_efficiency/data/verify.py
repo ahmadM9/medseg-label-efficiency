@@ -9,7 +9,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from medseg_label_efficiency.data.camus import PHASES, SPLIT_FILES, VIEWS, read_split
+from medseg_label_efficiency.data.camus import PHASES, SPLIT_FILES, VIEWS, find_nii, read_split
 
 EXPECTED_PATIENTS = 500
 EXPECTED_SPLIT_SIZES = {"train": 400, "val": 50, "test": 50}
@@ -58,9 +58,9 @@ def verify(data_root: str | Path) -> list[str]:
                 problems.append(f"{patient}: missing Info_{view}.cfg")
             for phase in PHASES:
                 for suffix in ("", "_gt"):
-                    f = pdir / f"{patient}_{view}_{phase}{suffix}.nii.gz"
-                    if not f.is_file():
-                        problems.append(f"{patient}: missing {f.name}")
+                    stem = f"{patient}_{view}_{phase}{suffix}"
+                    if not find_nii(pdir, stem).is_file():
+                        problems.append(f"{patient}: missing {stem}.nii[.gz]")
 
     return problems
 
