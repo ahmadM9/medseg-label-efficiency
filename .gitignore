@@ -4,6 +4,7 @@
 # experiment outputs
 /outputs/
 /mlruns/
+/mlflow.db
 /checkpoints/
 
 # python
