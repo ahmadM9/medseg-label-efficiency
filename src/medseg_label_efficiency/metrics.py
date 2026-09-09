@@ -7,7 +7,7 @@ Dice and 95th-percentile Hausdorff distance, computed per sample.
 
 import numpy as np
 import torch
-from monai.metrics import DiceMetric, HausdorffDistanceMetric
+from monai.metrics import DiceMetric, HausdorffDistanceMetric, compute_hausdorff_distance
 from monai.networks.utils import one_hot
 
 NUM_CLASSES = 4
@@ -83,3 +83,31 @@ class MetricAccumulator:
         if self.hd95 is not None:
             self.hd95.reset()
         self.meta = []
+
+
+def binary_scores(
+    pred: np.ndarray,
+    gt: np.ndarray,
+    spacing: tuple[float, float] | None = None,
+) -> tuple[float, float]:
+    """Dice and HD95 for one predicted mask vs one ground-truth mask.
+
+    Used by the promptable-model arms, which segment one structure per prompt.
+    Returns (dice, hd95); hd95 is in mm when spacing is given, and NaN when
+    either mask is empty (no boundary to measure).
+    """
+    pred_t = torch.as_tensor(pred, dtype=torch.bool)
+    gt_t = torch.as_tensor(gt, dtype=torch.bool)
+    intersection = (pred_t & gt_t).sum().item()
+    denominator = pred_t.sum().item() + gt_t.sum().item()
+    dice = 2 * intersection / denominator if denominator else float("nan")
+    if not pred_t.any() or not gt_t.any():
+        return dice, float("nan")
+    hd = compute_hausdorff_distance(
+        one_hot(pred_t[None, None].long(), 2),
+        one_hot(gt_t[None, None].long(), 2),
+        include_background=False,
+        percentile=95,
+        spacing=list(spacing) if spacing is not None else None,
+    )
+    return dice, float(hd.item())
