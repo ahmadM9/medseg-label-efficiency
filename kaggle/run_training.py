@@ -25,8 +25,9 @@ REPO_DIR = Path("/tmp/repo")
 WORK = Path("/kaggle/working")
 INPUT = Path("/kaggle/input")
 
-# which repo config this kernel trains; edit before pushing a different run
-CONFIG_NAME = "camus_unet2d.yaml"
+# which repo configs this kernel trains, in order; edit before pushing a
+# different run (several small runs can share one session this way)
+CONFIG_NAMES = ["camus_unet2d.yaml"]
 
 
 def run(cmd, **kwargs):
@@ -64,23 +65,28 @@ def main() -> None:
     data_root = find_data_root()
     run([sys.executable, "-m", "medseg_label_efficiency.data.verify", "--data-root", data_root])
 
-    cfg = yaml.safe_load((REPO_DIR / "configs" / CONFIG_NAME).read_text())
-    cfg["data_root"] = str(data_root)
-    out_rel = cfg["out_dir"]
-    config_path = WORK / "config.yaml"
-    config_path.write_text(yaml.safe_dump(cfg))
+    for config_name in CONFIG_NAMES:
+        cfg = yaml.safe_load((REPO_DIR / "configs" / config_name).read_text())
+        cfg["data_root"] = str(data_root)
+        if cfg.get("train_subset"):
+            cfg["train_subset"] = str(REPO_DIR / cfg["train_subset"])
+        out_rel = cfg["out_dir"]
+        config_path = WORK / f"config_{Path(config_name).stem}.yaml"
+        config_path.write_text(yaml.safe_dump(cfg))
 
-    train_cmd = [sys.executable, "-m", "medseg_label_efficiency.train", "--config", config_path]
-    prev = find_resume_checkpoint(out_rel)
-    if prev is not None:
-        print(f"found previous checkpoints at {prev}, resuming", flush=True)
-        dest = WORK / out_rel
-        dest.mkdir(parents=True, exist_ok=True)
-        for f in prev.glob("*.pt"):
-            shutil.copy2(f, dest / f.name)
-        train_cmd.append("--resume")
+        train_cmd = [
+            sys.executable, "-m", "medseg_label_efficiency.train", "--config", config_path
+        ]
+        prev = find_resume_checkpoint(out_rel)
+        if prev is not None:
+            print(f"found previous checkpoints at {prev}, resuming", flush=True)
+            dest = WORK / out_rel
+            dest.mkdir(parents=True, exist_ok=True)
+            for f in prev.glob("*.pt"):
+                shutil.copy2(f, dest / f.name)
+            train_cmd.append("--resume")
 
-    run(train_cmd, cwd=WORK)
+        run(train_cmd, cwd=WORK)
 
 
 if __name__ == "__main__":
