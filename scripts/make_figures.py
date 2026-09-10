@@ -23,6 +23,14 @@ SUPERVISED = [
     (100, "outputs/camus_unet2d_p25/test_metrics.json"),
     (400, "outputs/camus_unet2d/test_metrics.json"),
 ]
+# same budgets, MedSAM2 with a fine-tuned decoder; its 0-label point is the
+# zero-shot MedSAM2 box line (same entity, same color)
+FINETUNED = [
+    (20, "outputs/medsam2_ft_p05/test_metrics.json"),
+    (40, "outputs/medsam2_ft_p10/test_metrics.json"),
+    (100, "outputs/medsam2_ft_p25/test_metrics.json"),
+    (400, "outputs/medsam2_ft_full/test_metrics.json"),
+]
 ZERO_SHOT = [
     ("SAM 2.1 · box", "outputs/kaggle-sam-eval/outputs/sam2_box/test_metrics.json"),
     ("MedSAM2 · box", "outputs/kaggle-sam-eval/outputs/medsam2_box/test_metrics.json"),
@@ -66,17 +74,26 @@ def draw(ax, metric_key: str) -> None:
             f"{label}  {y:.2f}", xy=(1.01, label_y), xycoords=("axes fraction", "data"),
             fontsize=8, color=color, va="center",
         )
-    if points:
-        xs, ys = zip(*points, strict=True)
-        ax.plot(xs, ys, color=COLOR_SUPERVISED, marker="o", markersize=6, linewidth=2)
-        for x, y in points:
+    curves = [
+        (points, COLOR_SUPERVISED, "U-Net (supervised)", "o", -16),
+        (
+            [(n, s[metric_key]) for n, path in FINETUNED if (s := load(path))],
+            "#009E73", "MedSAM2 (fine-tuned)", "s", 12,
+        ),
+    ]
+    for pts, color, name, marker, name_dy in curves:
+        if not pts:
+            continue
+        xs, ys = zip(*pts, strict=True)
+        ax.plot(xs, ys, color=color, marker=marker, markersize=6, linewidth=2)
+        for x, y in pts:
             ax.annotate(
-                f"{y:.2f}", xy=(x, y), xytext=(0, 9), textcoords="offset points",
-                fontsize=8, color=INK, ha="center",
+                f"{y:.2f}", xy=(x, y), xytext=(0, 9 if name_dy < 0 else -14),
+                textcoords="offset points", fontsize=8, color=INK, ha="center",
             )
         ax.annotate(
-            "U-Net (supervised)", xy=(xs[0], ys[0]), xytext=(0, -16),
-            textcoords="offset points", fontsize=9, color=COLOR_SUPERVISED, ha="left",
+            name, xy=(xs[0], ys[0]), xytext=(0, name_dy),
+            textcoords="offset points", fontsize=9, color=color, ha="left",
         )
     ax.set_xscale("log")
     ax.set_xticks([20, 40, 100, 400])
