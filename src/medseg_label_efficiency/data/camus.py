@@ -138,13 +138,18 @@ def get_dataset(
     image_size: tuple[int, int] = (256, 256),
     cache_rate: float = 0.0,
     limit: int = 0,
+    patients: list[str] | None = None,
 ) -> Dataset:
     """MONAI Dataset over the labeled ED/ES frames of one split.
 
     cache_rate > 0 switches to a CacheDataset (samples decoded once, kept in
     RAM). limit > 0 truncates the sample list, for smoke runs and debugging.
+    patients restricts to a patient list (the label-efficiency subsets).
     """
     samples = build_samples(data_root, split)
+    if patients is not None:
+        keep = set(patients)
+        samples = [s for s in samples if s["patient"] in keep]
     if limit > 0:
         samples = samples[:limit]
     transform = get_transforms(train=(split == "train"), image_size=image_size)

@@ -1,0 +1,23 @@
+# Label-efficiency run: 5% of training patients (20 of 400, nested subset).
+# Epochs scaled so total optimizer steps match the 100% baseline (~10k).
+dataset: camus
+data_root: data/camus
+out_dir: outputs/camus_unet2d_p05
+train_subset: configs/subsets/train_p05.txt
+image_size: [256, 256]
+batch_size: 16
+num_workers: 4
+cache_rate: 1.0
+seed: 42
+
+model:
+  channels: [32, 64, 128, 256, 512]
+  strides: [2, 2, 2, 2]
+  num_res_units: 2
+
+training:
+  epochs: 2000
+  lr: 1.0e-3
+  weight_decay: 1.0e-5
+  val_interval: 40
+  amp: true

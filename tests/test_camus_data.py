@@ -1,5 +1,7 @@
 """Tests against the real CAMUS copy — skipped automatically if not linked."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -38,6 +40,24 @@ def test_sample_metadata(data_root):
     assert sample["view"] in ("2CH", "4CH")
     assert sample["phase"] in ("ED", "ES")
     assert sample["quality"] in ("Good", "Medium", "Poor")
+
+
+def test_patient_subset_filtering(data_root):
+    subset = read_split(data_root, "train")[:3]
+    ds = get_dataset(data_root, "train", patients=subset)
+    assert len(ds) == 4 * len(subset)  # 2 views x 2 phases per patient
+    assert {s["patient"] for s in ds.data} == set(subset)
+
+
+def test_committed_subsets_nest_and_come_from_train_split(data_root):
+    subset_dir = Path(__file__).parents[1] / "configs" / "subsets"
+    train = set(read_split(data_root, "train"))
+    lists = {
+        name: set((subset_dir / f"train_{name}.txt").read_text().split())
+        for name in ("p05", "p10", "p25")
+    }
+    assert len(lists["p05"]) == 20 and len(lists["p10"]) == 40 and len(lists["p25"]) == 100
+    assert lists["p05"] <= lists["p10"] <= lists["p25"] <= train
 
 
 @pytest.mark.parametrize("index", [0, 100, 199])

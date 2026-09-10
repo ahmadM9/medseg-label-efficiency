@@ -94,7 +94,17 @@ def main() -> None:
 
     image_size = tuple(cfg["image_size"])
     cache = 0.0 if args.limit_train else cfg.get("cache_rate", 0.0)
-    train_ds = get_dataset(cfg["data_root"], "train", image_size, cache, args.limit_train)
+    subset = None
+    if cfg.get("train_subset"):
+        subset = [
+            line.strip()
+            for line in Path(cfg["train_subset"]).read_text().splitlines()
+            if line.strip()
+        ]
+        print(f"training restricted to {len(subset)} patients from {cfg['train_subset']}")
+    train_ds = get_dataset(
+        cfg["data_root"], "train", image_size, cache, args.limit_train, patients=subset
+    )
     val_ds = get_dataset(cfg["data_root"], "val", image_size, cache, args.limit_val)
     train_loader = DataLoader(
         train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["num_workers"]
