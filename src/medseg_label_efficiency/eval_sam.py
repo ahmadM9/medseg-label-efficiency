@@ -151,6 +151,10 @@ def main() -> None:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--out-dir", default="")
+    parser.add_argument(
+        "--decoder-weights", default="",
+        help="load a fine-tuned mask-decoder checkpoint over the stock model",
+    )
     args = parser.parse_args()
 
     samples = build_samples(args.data_root, args.split)
@@ -158,6 +162,12 @@ def main() -> None:
         samples = samples[: args.limit]
 
     backend = Sam2Backend(args.model, args.device)
+    if args.decoder_weights:
+        import torch
+
+        ckpt = torch.load(args.decoder_weights, map_location=args.device, weights_only=True)
+        backend.predictor.model.sam_mask_decoder.load_state_dict(ckpt["decoder"])
+        print(f"loaded fine-tuned decoder from {args.decoder_weights} (step {ckpt['step']})")
     records = evaluate_model(backend, samples, args.prompt)
 
     out_dir = Path(args.out_dir or f"outputs/{args.model}_{args.prompt}")

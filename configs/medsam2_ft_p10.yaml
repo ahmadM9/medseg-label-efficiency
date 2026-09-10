@@ -1,0 +1,14 @@
+# MedSAM2 decoder fine-tuning: 10% budget (40 patients, same nested subset
+# as the U-Net runs). Effort equalized across budgets via a fixed step count.
+data_root: data/camus
+out_dir: outputs/medsam2_ft_p10
+train_subset: configs/subsets/train_p10.txt
+batch_size: 16
+jitter_px: 5
+seed: 42
+
+training:
+  steps: 5000
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  val_interval: 250

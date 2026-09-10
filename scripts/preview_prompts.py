@@ -32,10 +32,16 @@ def main() -> None:
     parser.add_argument("--n", type=int, default=4)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--out", default="outputs/previews_prompts")
+    parser.add_argument("--decoder-weights", default="", help="fine-tuned decoder checkpoint")
     args = parser.parse_args()
 
     samples = build_samples(args.data_root, "test")[: args.n]
     backend = Sam2Backend(args.model, args.device)
+    if args.decoder_weights:
+        import torch
+
+        ckpt = torch.load(args.decoder_weights, map_location=args.device, weights_only=True)
+        backend.predictor.model.sam_mask_decoder.load_state_dict(ckpt["decoder"])
     keys = ["image", "label"]
     load = Compose([LoadImaged(keys=keys), EnsureChannelFirstd(keys=keys)])
     out_dir = Path(args.out)
