@@ -1,0 +1,14 @@
+{
+  "id": "ahmadm10/camus-head-train",
+  "title": "camus-head-train",
+  "code_file": "run_head.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": ["ahmadm10/camus-echo"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
