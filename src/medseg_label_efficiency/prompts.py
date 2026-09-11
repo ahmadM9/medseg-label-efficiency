@@ -11,6 +11,8 @@ upper bound, stated as such wherever results are reported. Two styles:
   is a different structure entirely.
 """
 
+import zlib
+
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
@@ -47,6 +49,11 @@ def point_from_mask(mask: np.ndarray) -> tuple[int, int] | None:
 
 
 def sample_rng(patient: str, structure: int) -> np.random.Generator:
-    """Reproducible per-(patient, structure) randomness for box jitter."""
-    seed = abs(hash((patient, structure))) % (2**32)
+    """Reproducible per-(patient, structure) randomness for box jitter.
+
+    Seeded with CRC32, not Python's hash(): string hashing is randomized per
+    process (PYTHONHASHSEED), which would silently change the jitter between
+    runs and make prompted evaluations non-reproducible.
+    """
+    seed = zlib.crc32(f"{patient}|{structure}".encode())
     return np.random.default_rng(seed)

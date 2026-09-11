@@ -44,6 +44,13 @@ def test_box_jitter_reproducible_and_clipped():
     assert 0 <= r0 <= r1 <= 49 and 0 <= c0 <= c1 <= 49
 
 
+def test_sample_rng_is_process_independent():
+    # CRC32 seeding must give the same stream in every process, forever;
+    # this constant pins that (Python's hash() would break it per-process)
+    rng = sample_rng("patient0001", 1)
+    assert rng.integers(0, 1000) == 715
+
+
 def test_empty_mask_returns_none():
     empty = np.zeros((30, 30), dtype=bool)
     assert box_from_mask(empty) is None
