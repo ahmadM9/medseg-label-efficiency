@@ -1,0 +1,15 @@
+# Frozen DINOv3 ViT-S/16 + trained segmentation head: 10% budget (40 patients, nested subset).
+# Head capacity matched to MedSAM2's decoder (~4M params); fully automatic.
+dataset: camus
+data_root: data/camus
+encoder: dinov3_s
+out_dir: outputs/dino3_head_p10
+train_subset: configs/subsets/train_p10.txt
+batch_size: 16
+seed: 42
+
+training:
+  steps: 5000
+  lr: 1.0e-3
+  weight_decay: 1.0e-5
+  val_interval: 250
