@@ -19,15 +19,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged
 
-from medseg_label_efficiency.data.camus import build_samples
-from medseg_label_efficiency.eval_sam import Sam2Backend, to_rgb_uint8
-from medseg_label_efficiency.metrics import STRUCTURES
+from medseg_label_efficiency.data.registry import get_dataset_module
+from medseg_label_efficiency.eval_sam import to_rgb_uint8
+from medseg_label_efficiency.promptable import Sam2Backend
 from medseg_label_efficiency.prompts import box_from_mask, point_from_mask, sample_rng
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", choices=["sam2", "medsam2"], default="medsam2")
+    parser.add_argument("--model", default="medsam2", help="a promptable-model registry name")
+    parser.add_argument("--dataset", default="camus")
     parser.add_argument("--data-root", default="data/camus")
     parser.add_argument("--n", type=int, default=4)
     parser.add_argument("--device", default="cpu")
@@ -35,7 +36,8 @@ def main() -> None:
     parser.add_argument("--decoder-weights", default="", help="fine-tuned decoder checkpoint")
     args = parser.parse_args()
 
-    samples = build_samples(args.data_root, "test")[: args.n]
+    ds = get_dataset_module(args.dataset)
+    samples = ds.build_samples(args.data_root, "test")[: args.n]
     backend = Sam2Backend(args.model, args.device)
     if args.decoder_weights:
         import torch
@@ -53,7 +55,7 @@ def main() -> None:
         gt_map = data["label"][0].numpy().astype(np.int64)
         rgb = to_rgb_uint8(image)
 
-        for structure_id, name in STRUCTURES.items():
+        for structure_id, name in ds.STRUCTURES.items():
             gt = gt_map == structure_id
             fig, axes = plt.subplots(1, 2, figsize=(9, 4.5))
             styles = [("box", "yellow"), ("point", "cyan")]

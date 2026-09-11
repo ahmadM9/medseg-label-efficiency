@@ -33,9 +33,22 @@ SPLIT_FILES = {
     "val": "subgroup_validation.txt",
     "test": "subgroup_testing.txt",
 }
+SPLITS = tuple(SPLIT_FILES)
 
 # label values in the ground-truth masks
 LABELS = {0: "background", 1: "lv_endo", 2: "lv_myo", 3: "left_atrium"}
+
+# the foreground structures, as the rest of the pipeline consumes them
+# (anatomy belongs to the dataset module, never to metrics/reporting code)
+STRUCTURES = {1: "lv_endo", 2: "lv_myo", 3: "left_atrium"}
+STRUCTURE_TITLES = {
+    "lv_endo": "LV endocardium",
+    "lv_myo": "LV myocardium",
+    "left_atrium": "Left atrium",
+}
+
+# per-sample metadata keys carried into evaluation records/CSVs
+META_KEYS = ("patient", "view", "phase", "quality")
 
 VIEWS = ("2CH", "4CH")
 PHASES = ("ED", "ES")
@@ -130,6 +143,60 @@ def get_transforms(train: bool, image_size: tuple[int, int] = (256, 256)) -> Com
         ]
     transforms.append(EnsureTyped(keys=["image", "label"]))
     return Compose(transforms)
+
+
+EXPECTED_PATIENTS = 500
+EXPECTED_SPLIT_SIZES = {"train": 400, "val": 50, "test": 50}
+
+
+def verify(data_root: str | Path) -> list[str]:
+    """Check an on-disk CAMUS copy; returns problems, empty means complete."""
+    data_root = Path(data_root)
+    problems = []
+
+    nifti_dir = data_root / "database_nifti"
+    split_dir = data_root / "database_split"
+    if not nifti_dir.is_dir():
+        return [f"missing directory: {nifti_dir}"]
+    if not split_dir.is_dir():
+        return [f"missing directory: {split_dir}"]
+
+    patients = sorted(p.name for p in nifti_dir.iterdir() if p.name.startswith("patient"))
+    if len(patients) != EXPECTED_PATIENTS:
+        problems.append(f"expected {EXPECTED_PATIENTS} patients, found {len(patients)}")
+
+    splits = {}
+    for split in SPLIT_FILES:
+        try:
+            splits[split] = read_split(data_root, split)
+        except FileNotFoundError:
+            problems.append(f"missing split file: {SPLIT_FILES[split]}")
+    if len(splits) == len(SPLIT_FILES):
+        for split, ids in splits.items():
+            if len(ids) != EXPECTED_SPLIT_SIZES[split]:
+                problems.append(
+                    f"{split} split: expected {EXPECTED_SPLIT_SIZES[split]}, found {len(ids)}"
+                )
+        all_ids = [pid for ids in splits.values() for pid in ids]
+        if len(all_ids) != len(set(all_ids)):
+            problems.append("splits overlap: some patients appear in more than one split")
+        missing = set(all_ids) - set(patients)
+        if missing:
+            examples = sorted(missing)[:3]
+            problems.append(f"{len(missing)} split patients missing on disk, e.g. {examples}")
+
+    for patient in patients:
+        pdir = nifti_dir / patient
+        for view in VIEWS:
+            if not (pdir / f"Info_{view}.cfg").is_file():
+                problems.append(f"{patient}: missing Info_{view}.cfg")
+            for phase in PHASES:
+                for suffix in ("", "_gt"):
+                    stem = f"{patient}_{view}_{phase}{suffix}"
+                    if not find_nii(pdir, stem).is_file():
+                        problems.append(f"{patient}: missing {stem}.nii[.gz]")
+
+    return problems
 
 
 def get_dataset(

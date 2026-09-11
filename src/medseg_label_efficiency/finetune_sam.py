@@ -27,9 +27,9 @@ from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged
 from monai.utils import set_determinism
 
 from medseg_label_efficiency.config import load_config
-from medseg_label_efficiency.data.camus import build_samples
-from medseg_label_efficiency.eval_sam import Sam2Backend, to_rgb_uint8
-from medseg_label_efficiency.metrics import STRUCTURES
+from medseg_label_efficiency.data.registry import get_dataset_module
+from medseg_label_efficiency.eval_sam import to_rgb_uint8
+from medseg_label_efficiency.promptable import Sam2Backend
 from medseg_label_efficiency.prompts import box_from_mask, sample_rng
 
 MODEL_SIZE = 512  # MedSAM2's input resolution
@@ -44,17 +44,17 @@ def freeze_all_but_decoder(model: torch.nn.Module) -> int:
     return trainable
 
 
-def build_pairs(entries: list[dict]) -> list[tuple[int, int]]:
+def build_pairs(entries: list[dict], structure_ids) -> list[tuple[int, int]]:
     """(image index, structure id) pairs, skipping structures absent from GT."""
     pairs = []
     for i, entry in enumerate(entries):
-        for structure_id in STRUCTURES:
+        for structure_id in structure_ids:
             if entry["gt512"][structure_id - 1].any():
                 pairs.append((i, structure_id))
     return pairs
 
 
-def precompute(backend: Sam2Backend, samples: list[dict], device) -> list[dict]:
+def precompute(backend: Sam2Backend, samples: list[dict], structure_ids) -> list[dict]:
     """Run the frozen encoder once per image; cache features + 512-square GT."""
     keys = ["image", "label"]
     load = Compose([LoadImaged(keys=keys), EnsureChannelFirstd(keys=keys)])
@@ -69,7 +69,7 @@ def precompute(backend: Sam2Backend, samples: list[dict], device) -> list[dict]:
                     (gt_map == s).float()[None, None], size=(MODEL_SIZE, MODEL_SIZE),
                     mode="nearest",
                 )[0, 0].bool()
-                for s in STRUCTURES
+                for s in structure_ids
             ]
         )
         with torch.no_grad():
@@ -163,18 +163,20 @@ def main() -> None:
     n_trainable = freeze_all_but_decoder(model)
     print(f"trainable decoder parameters: {n_trainable / 1e6:.2f}M")
 
-    train_samples = build_samples(cfg["data_root"], "train")
+    ds = get_dataset_module(cfg["dataset"])
+    train_samples = ds.build_samples(cfg["data_root"], "train")
     if cfg.get("train_subset"):
         keep = set(Path(cfg["train_subset"]).read_text().split())
         train_samples = [s for s in train_samples if s["patient"] in keep]
         print(f"training restricted to {len(keep)} patients")
-    val_samples = build_samples(cfg["data_root"], "val")
+    val_samples = ds.build_samples(cfg["data_root"], "val")
 
     print(f"caching embeddings: {len(train_samples)} train + {len(val_samples)} val images")
-    train_entries = precompute(backend, train_samples, device)
-    val_entries = precompute(backend, val_samples, device)
-    train_pairs = build_pairs(train_entries)
-    val_pairs = build_pairs(val_entries)
+    structure_ids = tuple(ds.STRUCTURES)
+    train_entries = precompute(backend, train_samples, structure_ids)
+    val_entries = precompute(backend, val_samples, structure_ids)
+    train_pairs = build_pairs(train_entries, structure_ids)
+    val_pairs = build_pairs(val_entries, structure_ids)
 
     dice_loss = DiceLoss(sigmoid=True)
     optimizer = torch.optim.AdamW(

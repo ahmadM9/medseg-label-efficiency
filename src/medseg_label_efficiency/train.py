@@ -19,8 +19,8 @@ from monai.networks.nets import UNet
 from monai.utils import set_determinism
 
 from medseg_label_efficiency.config import load_config
-from medseg_label_efficiency.data.camus import get_dataset
-from medseg_label_efficiency.metrics import NUM_CLASSES, MetricAccumulator
+from medseg_label_efficiency.data.registry import get_dataset_module
+from medseg_label_efficiency.metrics import MetricAccumulator
 
 
 def pick_device(name: str) -> torch.device:
@@ -33,21 +33,21 @@ def pick_device(name: str) -> torch.device:
     return torch.device("cpu")
 
 
-def build_model(cfg: dict) -> UNet:
+def build_model(cfg: dict, num_classes: int) -> UNet:
     m = cfg["model"]
     return UNet(
         spatial_dims=2,
         in_channels=1,
-        out_channels=NUM_CLASSES,
+        out_channels=num_classes,
         channels=tuple(m["channels"]),
         strides=tuple(m["strides"]),
         num_res_units=m["num_res_units"],
     )
 
 
-def validate(model, loader, device) -> float:
+def validate(model, loader, device, structures) -> float:
     model.eval()
-    acc = MetricAccumulator(hausdorff=False)
+    acc = MetricAccumulator(structures, hausdorff=False)
     with torch.no_grad():
         for batch in loader:
             images = batch["image"].to(device)
@@ -82,6 +82,7 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(args.config)
+    ds = get_dataset_module(cfg["dataset"])
     tr = cfg["training"]
     epochs = args.epochs or tr["epochs"]
     device = pick_device(args.device)
@@ -102,16 +103,16 @@ def main() -> None:
             if line.strip()
         ]
         print(f"training restricted to {len(subset)} patients from {cfg['train_subset']}")
-    train_ds = get_dataset(
+    train_ds = ds.get_dataset(
         cfg["data_root"], "train", image_size, cache, args.limit_train, patients=subset
     )
-    val_ds = get_dataset(cfg["data_root"], "val", image_size, cache, args.limit_val)
+    val_ds = ds.get_dataset(cfg["data_root"], "val", image_size, cache, args.limit_val)
     train_loader = DataLoader(
         train_ds, batch_size=cfg["batch_size"], shuffle=True, num_workers=cfg["num_workers"]
     )
     val_loader = DataLoader(val_ds, batch_size=cfg["batch_size"], num_workers=cfg["num_workers"])
 
-    model = build_model(cfg).to(device)
+    model = build_model(cfg, max(ds.STRUCTURES) + 1).to(device)
     loss_fn = DiceCELoss(to_onehot_y=True, softmax=True)
     optimizer = torch.optim.AdamW(model.parameters(), lr=tr["lr"], weight_decay=tr["weight_decay"])
     use_amp = bool(tr.get("amp", False)) and device.type == "cuda"
@@ -170,7 +171,7 @@ def main() -> None:
             msg = f"epoch {epoch + 1}/{epochs} loss {epoch_loss:.4f} ({time.time() - t0:.1f}s)"
 
             if (epoch + 1) % tr["val_interval"] == 0 or epoch == epochs - 1:
-                val_dice = validate(model, val_loader, device)
+                val_dice = validate(model, val_loader, device, ds.STRUCTURES)
                 mlflow.log_metric("val_dice", val_dice, step=epoch)
                 msg += f" val dice {val_dice:.4f}"
                 if val_dice > best_dice:

@@ -5,8 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from medseg_label_efficiency.data.camus import build_samples, get_dataset, read_split
-from medseg_label_efficiency.data.verify import verify
+from medseg_label_efficiency.data.camus import build_samples, get_dataset, read_split, verify
 
 pytestmark = pytest.mark.requires_data
 

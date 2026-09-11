@@ -41,8 +41,12 @@ ZERO_SHOT = [
 COLOR_SUPERVISED = "#0072B2"
 COLORS_ZERO_SHOT = ["#E69F00", "#009E73", "#CC79A7", "#D55E00"]
 INK, MUTED = "#333333", "#767676"
-STRUCTURES = ["lv_endo", "lv_myo", "left_atrium"]
-TITLES = {"lv_endo": "LV endocardium", "lv_myo": "LV myocardium", "left_atrium": "Left atrium"}
+
+from medseg_label_efficiency.data.registry import get_dataset_module  # noqa: E402
+
+DATASET = get_dataset_module("camus")
+STRUCTURES = list(DATASET.STRUCTURES.values())
+TITLES = DATASET.STRUCTURE_TITLES
 
 
 def load(path: str) -> dict | None:

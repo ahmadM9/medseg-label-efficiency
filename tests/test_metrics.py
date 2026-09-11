@@ -4,6 +4,8 @@ import torch
 
 from medseg_label_efficiency.metrics import MetricAccumulator
 
+STRUCTURES = {1: "lv_endo", 2: "lv_myo", 3: "left_atrium"}
+
 
 def _label_map(size=64):
     gt = torch.zeros(1, 1, size, size, dtype=torch.long)
@@ -15,7 +17,7 @@ def _label_map(size=64):
 
 def test_perfect_prediction():
     gt = _label_map()
-    acc = MetricAccumulator(hausdorff=True)
+    acc = MetricAccumulator(STRUCTURES, hausdorff=True)
     acc.add(gt.clone(), gt)
     s = acc.summary()
     assert s["dice_lv_endo"] == 1.0
@@ -29,7 +31,7 @@ def test_known_overlap_dice():
     gt[..., 10:30, 10:30] = 1
     pred = torch.zeros_like(gt)
     pred[..., 10:30, 20:40] = 1
-    acc = MetricAccumulator(hausdorff=False)
+    acc = MetricAccumulator(STRUCTURES, hausdorff=False)
     acc.add(pred, gt)
     assert abs(acc.summary()["dice_lv_endo"] - 0.5) < 1e-6
 
@@ -38,7 +40,7 @@ def test_missing_structure_scores_zero_dice():
     gt = _label_map()
     pred = gt.clone()
     pred[pred == 3] = 0
-    acc = MetricAccumulator(hausdorff=False)
+    acc = MetricAccumulator(STRUCTURES, hausdorff=False)
     acc.add(pred, gt)
     s = acc.summary()
     assert s["dice_left_atrium"] == 0.0
@@ -51,16 +53,16 @@ def test_spacing_scales_hd95_to_millimeters():
     gt[..., 10:20, 10:20] = 1
     pred = torch.zeros_like(gt)
     pred[..., 10:20, 11:21] = 1
-    px = MetricAccumulator(hausdorff=True)
+    px = MetricAccumulator(STRUCTURES, hausdorff=True)
     px.add(pred, gt)
-    mm = MetricAccumulator(hausdorff=True)
+    mm = MetricAccumulator(STRUCTURES, hausdorff=True)
     mm.add(pred, gt, spacing=(0.5, 0.5))
     assert abs(mm.summary()["hd95_lv_endo"] - 0.5 * px.summary()["hd95_lv_endo"]) < 1e-6
 
 
 def test_records_carry_metadata():
     gt = _label_map()
-    acc = MetricAccumulator(hausdorff=False)
+    acc = MetricAccumulator(STRUCTURES, hausdorff=False)
     acc.add(gt.clone(), gt, meta=[{"patient": "patient0001", "quality": "Good"}])
     rows = acc.records()
     assert len(rows) == 1

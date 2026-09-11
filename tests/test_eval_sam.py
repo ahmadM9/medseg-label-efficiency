@@ -5,7 +5,10 @@ import nibabel as nib
 import numpy as np
 import pytest
 
+from medseg_label_efficiency.data.registry import get_dataset_module
 from medseg_label_efficiency.eval_sam import evaluate_model, summarize, to_rgb_uint8
+
+CAMUS = get_dataset_module("camus")
 
 
 class MockBackend:
@@ -46,7 +49,7 @@ def synthetic_samples(tmp_path):
 
 @pytest.mark.parametrize("prompt_type", ["box", "point"])
 def test_evaluate_model_record_format(synthetic_samples, prompt_type):
-    records = evaluate_model(MockBackend(), synthetic_samples, prompt_type)
+    records = evaluate_model(MockBackend(), synthetic_samples, prompt_type, CAMUS)
     assert len(records) == 1
     row = records[0]
     for name in ("lv_endo", "lv_myo", "left_atrium"):
@@ -57,13 +60,13 @@ def test_evaluate_model_record_format(synthetic_samples, prompt_type):
 
 def test_box_mock_scores_reasonably(synthetic_samples):
     # a filled box over a solid square should overlap it heavily
-    records = evaluate_model(MockBackend(), synthetic_samples, "box")
+    records = evaluate_model(MockBackend(), synthetic_samples, "box", CAMUS)
     assert records[0]["dice_lv_endo"] > 0.7
 
 
 def test_summarize_shapes(synthetic_samples):
-    records = evaluate_model(MockBackend(), synthetic_samples, "box")
-    summary = summarize(records)
+    records = evaluate_model(MockBackend(), synthetic_samples, "box", CAMUS)
+    summary = summarize(records, CAMUS)
     assert "dice_mean" in summary and "hd95_mean" in summary
     assert summary["by_quality"]["Good"]["n"] == 1
 

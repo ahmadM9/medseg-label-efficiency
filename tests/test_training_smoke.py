@@ -13,7 +13,7 @@ CONFIG = Path(__file__).parents[1] / "configs" / "camus_unet2d.yaml"
 
 def test_model_forward_backward():
     cfg = load_config(CONFIG)
-    model = build_model(cfg)
+    model = build_model(cfg, 4)
     images = torch.randn(2, 1, 256, 256)
     labels = torch.randint(0, 4, (2, 1, 256, 256))
     out = model(images)

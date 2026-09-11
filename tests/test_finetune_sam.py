@@ -31,7 +31,7 @@ def test_build_pairs_skips_absent_structures():
         {"gt512": gt, "patient": "patient0001"},
         {"gt512": ~torch.zeros(3, 8, 8, dtype=torch.bool), "patient": "patient0002"},
     ]
-    pairs = build_pairs(entries)
+    pairs = build_pairs(entries, (1, 2, 3))
     assert (0, 1) in pairs
     assert (0, 2) not in pairs and (0, 3) not in pairs
     assert [(1, s) for s in (1, 2, 3)] == [p for p in pairs if p[0] == 1]

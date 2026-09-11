@@ -10,19 +10,19 @@ import torch
 from monai.metrics import DiceMetric, HausdorffDistanceMetric, compute_hausdorff_distance
 from monai.networks.utils import one_hot
 
-NUM_CLASSES = 4
-STRUCTURES = {1: "lv_endo", 2: "lv_myo", 3: "left_atrium"}
-
 
 class MetricAccumulator:
     """Collects per-sample metrics from batches of integer label maps.
 
     Predictions and ground truth arrive as (B, 1, H, W) tensors of class
-    indices. HD95 is optional because it is slow and not needed for
-    validation-time model selection.
+    indices. The structure map (label id -> name) comes from the dataset
+    module — this file knows no anatomy. HD95 is optional because it is
+    slow and not needed for validation-time model selection.
     """
 
-    def __init__(self, hausdorff: bool = True):
+    def __init__(self, structures: dict[int, str], hausdorff: bool = True):
+        self.structures = structures
+        self.num_classes = max(structures) + 1
         self.dice = DiceMetric(include_background=False, reduction="none")
         self.hd95 = (
             HausdorffDistanceMetric(include_background=False, percentile=95, reduction="none")
@@ -40,8 +40,8 @@ class MetricAccumulator:
     ) -> None:
         """spacing is the physical pixel size (mm per pixel, per axis); when
         given, HD95 comes out in millimeters instead of pixels."""
-        pred_oh = one_hot(pred, NUM_CLASSES)
-        gt_oh = one_hot(gt, NUM_CLASSES)
+        pred_oh = one_hot(pred, self.num_classes)
+        gt_oh = one_hot(gt, self.num_classes)
         self.dice(pred_oh, gt_oh)
         if self.hd95 is not None:
             self.hd95(pred_oh, gt_oh, spacing=list(spacing) if spacing is not None else None)
@@ -55,7 +55,7 @@ class MetricAccumulator:
         rows = []
         for i in range(dice.shape[0]):
             row = dict(self.meta[i]) if i < len(self.meta) else {}
-            for j, name in enumerate(STRUCTURES.values()):
+            for j, name in enumerate(self.structures.values()):
                 row[f"dice_{name}"] = float(dice[i, j])
                 if hd is not None:
                     row[f"hd95_{name}"] = float(hd[i, j])
@@ -67,13 +67,13 @@ class MetricAccumulator:
         or empty ground truth for a structure) is excluded from the mean."""
         out = {}
         dice = self.dice.get_buffer().cpu().numpy()
-        for j, name in enumerate(STRUCTURES.values()):
+        for j, name in enumerate(self.structures.values()):
             out[f"dice_{name}"] = float(np.nanmean(dice[:, j]))
         out["dice_mean"] = float(np.nanmean(dice))
         if self.hd95 is not None:
             hd = self.hd95.get_buffer().cpu().numpy()
             hd = np.where(np.isinf(hd), np.nan, hd)
-            for j, name in enumerate(STRUCTURES.values()):
+            for j, name in enumerate(self.structures.values()):
                 out[f"hd95_{name}"] = float(np.nanmean(hd[:, j]))
             out["hd95_mean"] = float(np.nanmean(hd))
         return out
