@@ -31,6 +31,13 @@ FINETUNED = [
     (100, "outputs/medsam2_ft_p25/test_metrics.json"),
     (400, "outputs/medsam2_ft_full/test_metrics.json"),
 ]
+# frozen generalist encoder + trained head (automatic, like the U-Net)
+DINO2 = [
+    (20, "outputs/dino2_head_p05/test_metrics.json"),
+    (40, "outputs/dino2_head_p10/test_metrics.json"),
+    (100, "outputs/dino2_head_p25/test_metrics.json"),
+    (400, "outputs/dino2_head_full/test_metrics.json"),
+]
 ZERO_SHOT = [
     ("SAM 2.1 · box", "outputs/kaggle-sam-eval/outputs/sam2_box/test_metrics.json"),
     ("MedSAM2 · box", "outputs/kaggle-sam-eval/outputs/medsam2_box/test_metrics.json"),
@@ -83,6 +90,10 @@ def draw(ax, metric_key: str) -> None:
         (
             [(n, s[metric_key]) for n, path in FINETUNED if (s := load(path))],
             "#009E73", "MedSAM2 (fine-tuned)", "s", 12,
+        ),
+        (
+            [(n, s[metric_key]) for n, path in DINO2 if (s := load(path))],
+            "#56B4E9", "DINOv2 frozen + head", "^", -16,
         ),
     ]
     for pts, color, name, marker, name_dy in curves:
