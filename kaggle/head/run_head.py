@@ -36,14 +36,20 @@ def find_data_root() -> Path:
     raise SystemExit(f"no CAMUS mount found under {INPUT}")
 
 
+# attached gated snapshots: the folder Kaggle mounts (dataset slug) -> the
+# path the encoder registry expects
+GATED_SNAPSHOTS = {"dinov3-vits16": "checkpoints/dinov3_vits16_hf"}
+
+
 def stage_gated_weights() -> None:
-    """Copy attached gated-model snapshots (e.g. DINOv3) into checkpoints/."""
-    dest = REPO_DIR / "checkpoints"
-    dest.mkdir(exist_ok=True)
+    """Copy attached gated-model snapshots (e.g. DINOv3) to their registry paths."""
     for f in INPUT.glob("**/model.safetensors"):
-        target = dest / f.parent.name
+        mount_name = next(
+            (p.name for p in f.parents if p.name in GATED_SNAPSHOTS), f.parent.name
+        )
+        target = REPO_DIR / GATED_SNAPSHOTS.get(mount_name, f"checkpoints/{f.parent.name}")
         shutil.copytree(f.parent, target, dirs_exist_ok=True)
-        print(f"staged {target.name}", flush=True)
+        print(f"staged {mount_name} -> {target.relative_to(REPO_DIR)}", flush=True)
 
 
 def main() -> None:
