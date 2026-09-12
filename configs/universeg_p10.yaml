@@ -1,0 +1,11 @@
+# UniverSeg in-context: 10% budget (40 patients) as the support pool, no training.
+# 32 supports per draw is the largest size the 20-patient pool allows; kept
+# constant across budgets so support size never confounds label budget.
+dataset: camus
+data_root: data/camus
+model: universeg
+out_dir: outputs/universeg_p10
+train_subset: configs/subsets/train_p10.txt
+match_keys: [view]
+shots: 32
+draws: 5

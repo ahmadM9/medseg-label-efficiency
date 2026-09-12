@@ -1,30 +1,17 @@
-"""Prompt simulation for the zero-shot promptable-model arms.
-
-Prompts are derived from the ground-truth mask of one structure — an oracle
-upper bound, stated as such wherever results are reported. Two styles:
-
-- jittered bounding box: the tight box around the structure with each edge
-  shifted by a few pixels, mimicking an imprecise human drawing
-- interior point: the pixel deepest inside the structure (maximum of the
-  distance transform). Never the center of mass: for ring-shaped structures
-  like the myocardium the center of mass lies in the enclosed cavity, which
-  is a different structure entirely.
-"""
-
 import zlib
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
+# prompts for the promptable arms are derived from the ground-truth mask of
+# one structure, an oracle upper bound stated as such wherever reported
+
 
 def box_from_mask(
     mask: np.ndarray, jitter_px: int = 5, rng: np.random.Generator | None = None
 ) -> tuple[int, int, int, int] | None:
-    """Jittered tight box around a binary mask, as (row0, col0, row1, col1).
-
-    Returns None for an empty mask. Bounds are clipped to the image, and the
-    box always still contains the tight box's center.
-    """
+    # tight box with each edge shifted by a few pixels, like an imprecise
+    # human drawing; (row0, col0, row1, col1), None for an empty mask
     rows = np.any(mask, axis=1)
     cols = np.any(mask, axis=0)
     if not rows.any():
@@ -41,19 +28,16 @@ def box_from_mask(
 
 
 def point_from_mask(mask: np.ndarray) -> tuple[int, int] | None:
-    """The (row, col) of the pixel deepest inside the mask; None if empty."""
+    # the pixel deepest inside the mask, never the center of mass: for a
+    # ring like the myocardium the center of mass lies in the cavity
     if not mask.any():
         return None
     depth = distance_transform_edt(mask)
     return tuple(int(v) for v in np.unravel_index(np.argmax(depth), mask.shape))
 
 
-def sample_rng(patient: str, structure: int) -> np.random.Generator:
-    """Reproducible per-(patient, structure) randomness for box jitter.
-
-    Seeded with CRC32, not Python's hash(): string hashing is randomized per
-    process (PYTHONHASHSEED), which would silently change the jitter between
-    runs and make prompted evaluations non-reproducible.
-    """
-    seed = zlib.crc32(f"{patient}|{structure}".encode())
+def sample_rng(*parts) -> np.random.Generator:
+    # seeded with crc32, not python's hash(): string hashing is randomized
+    # per process, which silently changed prompt jitter between runs
+    seed = zlib.crc32("|".join(str(p) for p in parts).encode())
     return np.random.default_rng(seed)

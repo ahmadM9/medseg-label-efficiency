@@ -1,8 +1,9 @@
-"""Registry contracts: datasets and promptable models are plug-and-play."""
+"""Registry contracts: datasets, promptable and in-context models are plug-and-play."""
 
 import pytest
 
 from medseg_label_efficiency.data.registry import DATASETS, INTERFACE, get_dataset_module
+from medseg_label_efficiency.incontext import IN_CONTEXT_MODELS
 from medseg_label_efficiency.promptable import PROMPTABLE_MODELS
 
 
@@ -26,3 +27,9 @@ def test_registered_datasets_satisfy_interface(name):
 def test_promptable_registry_entries_are_complete():
     for name, entry in PROMPTABLE_MODELS.items():
         assert {"checkpoint", "config", "vendored_config"} <= set(entry), name
+
+
+def test_incontext_registry_entries_are_complete():
+    for name, entry in IN_CONTEXT_MODELS.items():
+        assert {"kind", "source", "input_size", "training_data"} <= set(entry), name
+        assert entry["kind"] in ("universeg", "transformers"), name

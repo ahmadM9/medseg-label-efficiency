@@ -1,0 +1,10 @@
+# SegGPT in-context: 5% budget (20 patients) as the support pool, no training.
+# 8 supports per draw with feature ensemble is what a T4 holds for ViT-L at 896x448.
+dataset: camus
+data_root: data/camus
+model: seggpt
+out_dir: outputs/seggpt_p05
+train_subset: configs/subsets/train_p05.txt
+match_keys: [view]
+shots: 8
+draws: 5
