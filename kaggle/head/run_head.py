@@ -37,18 +37,20 @@ def find_data_root() -> Path:
 
 
 def stage_gated_weights() -> None:
-    """Copy any attached model-weight files (e.g. DINOv3) into checkpoints/."""
+    """Copy attached gated-model snapshots (e.g. DINOv3) into checkpoints/."""
     dest = REPO_DIR / "checkpoints"
     dest.mkdir(exist_ok=True)
-    for f in INPUT.glob("**/*.pth"):
-        shutil.copy2(f, dest / f.name)
-        print(f"staged {f.name}", flush=True)
+    for f in INPUT.glob("**/model.safetensors"):
+        target = dest / f.parent.name
+        shutil.copytree(f.parent, target, dirs_exist_ok=True)
+        print(f"staged {target.name}", flush=True)
 
 
 def main() -> None:
     subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"])
     run(["git", "clone", "--depth", "1", REPO_URL, REPO_DIR])
     run([sys.executable, "-m", "pip", "install", "-q", REPO_DIR])
+    run([sys.executable, "-m", "pip", "install", "-q", "transformers"])
     stage_gated_weights()
 
     import yaml

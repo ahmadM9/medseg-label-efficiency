@@ -9,7 +9,8 @@ from medseg_label_efficiency.seg_head import PARAM_WINDOW, build_head
 
 def test_encoder_registry_entries_complete():
     for name, entry in FROZEN_ENCODERS.items():
-        assert {"hub", "checkpoint", "patch", "dim", "input_size"} <= set(entry), name
+        assert {"kind", "source", "patch", "dim", "input_size"} <= set(entry), name
+        assert entry["kind"] in ("hub", "transformers"), name
         assert entry["input_size"] % entry["patch"] == 0, name
 
 
@@ -22,7 +23,7 @@ def test_gated_checkpoint_missing_gives_clear_error(monkeypatch):
     monkeypatch.setitem(
         FROZEN_ENCODERS,
         "gated_test",
-        {"hub": ("x/y", "z"), "checkpoint": "does/not/exist.pth",
+        {"kind": "transformers", "source": "does/not/exist",
          "patch": 16, "dim": 8, "input_size": 32},
     )
     with pytest.raises(FileNotFoundError, match="license"):

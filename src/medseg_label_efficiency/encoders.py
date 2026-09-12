@@ -21,15 +21,17 @@ IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
 
 FROZEN_ENCODERS = {
     "dinov2_s": {
-        "hub": ("facebookresearch/dinov2", "dinov2_vits14"),
-        "checkpoint": None,  # ungated, torch.hub fetches the weights
+        "kind": "hub",  # torch.hub fetches code and (ungated) weights itself
+        "source": ("facebookresearch/dinov2", "dinov2_vits14"),
         "patch": 14,
         "dim": 384,
         "input_size": 518,  # must be a multiple of the patch size -> 37x37 tokens
     },
     "dinov3_s": {
-        "hub": ("facebookresearch/dinov3", "dinov3_vits16"),
-        "checkpoint": "checkpoints/dinov3_vits16.pth",  # license-gated, manual download
+        # license-gated: the HuggingFace snapshot is downloaded manually into
+        # this directory (transformers format), then loaded offline
+        "kind": "transformers",
+        "source": "checkpoints/dinov3_vits16_hf",
         "patch": 16,
         "dim": 384,
         "input_size": 512,  # 32x32 tokens
@@ -44,21 +46,28 @@ class FrozenEncoder:
             raise KeyError(f"unknown frozen encoder {name!r}; registered: {known}")
         entry = FROZEN_ENCODERS[name]
         self.name = name
+        self.kind = entry["kind"]
         self.dim = entry["dim"]
         self.input_size = entry["input_size"]
         self.device = torch.device(device)
+        self._skip_tokens = 0  # transformers models prepend cls/register tokens
 
-        repo, model_name = entry["hub"]
-        if entry["checkpoint"] is None:
+        if self.kind == "hub":
+            repo, model_name = entry["source"]
             self.model = torch.hub.load(repo, model_name)
-        else:
-            ckpt = Path(entry["checkpoint"])
-            if not ckpt.is_file():
+        elif self.kind == "transformers":
+            snapshot = Path(entry["source"])
+            if not (snapshot / "model.safetensors").is_file():
                 raise FileNotFoundError(
-                    f"{name} weights not found at {ckpt} — these are license-gated: "
-                    "accept the DINOv3 license and download the ViT-S/16 file there"
+                    f"{name} weights not found at {snapshot} — these are license-gated: "
+                    "accept the license on HuggingFace and download the snapshot there"
                 )
-            self.model = torch.hub.load(repo, model_name, weights=str(ckpt))
+            from transformers import AutoModel
+
+            self.model = AutoModel.from_pretrained(snapshot)
+            self._skip_tokens = 1 + getattr(self.model.config, "num_register_tokens", 0)
+        else:
+            raise ValueError(f"unknown encoder kind {self.kind!r}")
         self.model.eval().to(self.device)
         for param in self.model.parameters():
             param.requires_grad = False
@@ -72,5 +81,11 @@ class FrozenEncoder:
             mode="bilinear", align_corners=False,
         )
         x = (x - IMAGENET_MEAN) / IMAGENET_STD
-        feats = self.model.get_intermediate_layers(x.to(self.device), n=1, reshape=True)[0]
-        return feats[0].cpu()
+        x = x.to(self.device)
+        if self.kind == "hub":
+            feats = self.model.get_intermediate_layers(x, n=1, reshape=True)[0]
+            return feats[0].cpu()
+        # transformers: token sequence -> drop cls/register tokens -> grid
+        tokens = self.model(pixel_values=x).last_hidden_state[0, self._skip_tokens :]
+        side = self.input_size // FROZEN_ENCODERS[self.name]["patch"]
+        return tokens.reshape(side, side, self.dim).permute(2, 0, 1).cpu()
