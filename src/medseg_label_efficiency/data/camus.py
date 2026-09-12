@@ -47,6 +47,12 @@ STRUCTURE_TITLES = {
     "left_atrium": "Left atrium",
 }
 
+# structures scored as the union of several labels. lv_epi is the
+# CAMUS-challenge "LV epicardium": the filled region inside the epicardial
+# contour, cavity plus wall, which is what published CAMUS LVEpi numbers
+# (the MedSAM2 paper included) refer to. Not the same task as lv_myo.
+DERIVED_STRUCTURES = {"lv_epi": (1, 2)}
+
 # per-sample metadata keys carried into evaluation records/CSVs
 META_KEYS = ("patient", "view", "phase", "quality")
 
@@ -107,6 +113,28 @@ def build_samples(data_root: str | Path, split: str) -> list[dict]:
                     }
                 )
     return samples
+
+
+def build_sequences(data_root: str | Path, split: str) -> list[dict]:
+    """One dict per (patient, view) half-cycle sequence, ED to ES, labeled on
+    every frame. Frame 0 is ED and the last frame is ES."""
+    data_root = Path(data_root)
+    sequences = []
+    for patient in read_split(data_root, split):
+        pdir = data_root / "database_nifti" / patient
+        for view in VIEWS:
+            info = parse_info(pdir / f"Info_{view}.cfg")
+            sequences.append(
+                {
+                    "image": str(find_nii(pdir, f"{patient}_{view}_half_sequence")),
+                    "label": str(find_nii(pdir, f"{patient}_{view}_half_sequence_gt")),
+                    "patient": patient,
+                    "view": view,
+                    "quality": info.get("ImageQuality", "Unknown"),
+                    "n_frames": int(info["NbFrame"]) if "NbFrame" in info else None,
+                }
+            )
+    return sequences
 
 
 def get_transforms(train: bool, image_size: tuple[int, int] = (256, 256)) -> Compose:

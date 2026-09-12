@@ -6,6 +6,7 @@ shipped inside the sam2 package) a vendored yaml to inject. Adding a model
 variant — e.g. sam2_large for the scale ablation — is one new entry here.
 """
 
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -75,3 +76,50 @@ class Sam2Backend:
             kwargs["point_labels"] = np.array([1])
         masks, scores, _ = self.predictor.predict(**kwargs, multimask_output=True)
         return masks[int(np.argmax(scores))].astype(bool)
+
+
+class Sam2VideoBackend:
+    """The video predictor behind eval_video.py: one box per object on one
+    frame, masks propagated to every other frame through sam2's memory."""
+
+    def __init__(self, model: str, device: str):
+        import torch
+        from sam2.build_sam import build_sam2_video_predictor
+
+        if model not in PROMPTABLE_MODELS:
+            known = ", ".join(sorted(PROMPTABLE_MODELS))
+            raise KeyError(f"unknown promptable model {model!r}; registered: {known}")
+        entry = PROMPTABLE_MODELS[model]
+        Sam2Backend._ensure_vendored_config(entry)
+        # the video predictor takes every size from model.image_size, so the
+        # feature-size fix the image predictor needs does not apply here
+        self.predictor = build_sam2_video_predictor(
+            entry["config"], entry["checkpoint"], device=torch.device(device)
+        )
+
+    def track(self, frames_rgb, boxes: dict, prompt_frame: int) -> dict:
+        """boxes: obj_id -> (r0, c0, r1, c1) on prompt_frame. Returns
+        frame_idx -> {obj_id: bool mask at native size} for every frame."""
+        from PIL import Image
+
+        # init_state only reads a JPEG folder or an mp4; the MedSAM2 authors'
+        # own video script feeds JPEG frames too, so this matches their path
+        out: dict = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            for i, frame in enumerate(frames_rgb):
+                Image.fromarray(frame).save(Path(tmp) / f"{i:05d}.jpg", quality=95)
+            state = self.predictor.init_state(video_path=tmp)
+            for obj_id, (r0, c0, r1, c1) in boxes.items():
+                self.predictor.add_new_points_or_box(
+                    state, frame_idx=prompt_frame, obj_id=obj_id,
+                    box=np.array([c0, r0, c1, r1], dtype=np.float32),
+                )
+            for reverse in (False, True):
+                for frame_idx, obj_ids, logits in self.predictor.propagate_in_video(
+                    state, start_frame_idx=prompt_frame, reverse=reverse
+                ):
+                    out[frame_idx] = {
+                        obj_id: (logits[i, 0] > 0).cpu().numpy()
+                        for i, obj_id in enumerate(obj_ids)
+                    }
+        return out
