@@ -34,7 +34,9 @@ def to_rgb_uint8(image: np.ndarray) -> np.ndarray:
     return np.stack([(scaled * 255).astype(np.uint8)] * 3, axis=-1)
 
 
-def evaluate_model(backend, samples: list[dict], prompt_type: str, ds) -> list[dict]:
+def evaluate_model(
+    backend, samples: list[dict], prompt_type: str, ds, jitter_px: int = 5
+) -> list[dict]:
     """One record per image: per-structure dice/hd95 plus metadata."""
     keys = ["image", "label"]
     load = Compose([LoadImaged(keys=keys), EnsureChannelFirstd(keys=keys)])
@@ -51,7 +53,8 @@ def evaluate_model(backend, samples: list[dict], prompt_type: str, ds) -> list[d
         for structure_id, name in ds.STRUCTURES.items():
             gt = gt_map == structure_id
             if prompt_type == "box":
-                prompt = box_from_mask(gt, rng=sample_rng(sample["patient"], structure_id))
+                rng = sample_rng(sample["patient"], structure_id)
+                prompt = box_from_mask(gt, jitter_px=jitter_px, rng=rng)
                 pred = backend.predict(rgb, box=prompt) if prompt else np.zeros_like(gt)
             else:
                 prompt = point_from_mask(gt)
@@ -86,6 +89,10 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--out-dir", default="")
     parser.add_argument(
+        "--jitter-px", type=int, default=5,
+        help="box edge jitter in pixels; 0 gives the exact tight box (prompt ablation)",
+    )
+    parser.add_argument(
         "--decoder-weights", default="",
         help="load a fine-tuned mask-decoder checkpoint over the stock model",
     )
@@ -103,7 +110,7 @@ def main() -> None:
         ckpt = torch.load(args.decoder_weights, map_location=args.device, weights_only=True)
         backend.predictor.model.sam_mask_decoder.load_state_dict(ckpt["decoder"])
         print(f"loaded fine-tuned decoder from {args.decoder_weights} (step {ckpt['step']})")
-    records = evaluate_model(backend, samples, args.prompt, ds)
+    records = evaluate_model(backend, samples, args.prompt, ds, jitter_px=args.jitter_px)
 
     out_dir = Path(args.out_dir or f"outputs/{args.model}_{args.prompt}")
     summary = {
@@ -111,6 +118,7 @@ def main() -> None:
         "prompt": args.prompt,
         "split": args.split,
         "n_samples": len(records),
+        "jitter_px": args.jitter_px if args.prompt == "box" else None,
         "protocol": "zero-shot, oracle prompts from GT (single shot), per-structure "
         "binary scoring on native grid, HD95 in mm",
         **summarize(records, ds),
