@@ -31,12 +31,18 @@ FINETUNED = [
     (100, "outputs/medsam2_ft_p25/test_metrics.json"),
     (400, "outputs/medsam2_ft_full/test_metrics.json"),
 ]
-# frozen generalist encoder + trained head (automatic, like the U-Net)
+# frozen generalist encoders + trained head (automatic, like the U-Net)
 DINO2 = [
     (20, "outputs/dino2_head_p05/test_metrics.json"),
     (40, "outputs/dino2_head_p10/test_metrics.json"),
     (100, "outputs/dino2_head_p25/test_metrics.json"),
     (400, "outputs/dino2_head_full/test_metrics.json"),
+]
+DINO3 = [
+    (20, "outputs/dino3_head_p05/test_metrics.json"),
+    (40, "outputs/dino3_head_p10/test_metrics.json"),
+    (100, "outputs/dino3_head_p25/test_metrics.json"),
+    (400, "outputs/dino3_head_full/test_metrics.json"),
 ]
 ZERO_SHOT = [
     ("SAM 2.1 · box", "outputs/kaggle-sam-eval/outputs/sam2_box/test_metrics.json"),
@@ -86,29 +92,32 @@ def draw(ax, metric_key: str) -> None:
             fontsize=8, color=color, va="center",
         )
     curves = [
-        (points, COLOR_SUPERVISED, "U-Net (supervised)", "o", -16),
+        (points, COLOR_SUPERVISED, "U-Net (supervised)", "o"),
         (
             [(n, s[metric_key]) for n, path in FINETUNED if (s := load(path))],
-            "#009E73", "MedSAM2 (fine-tuned)", "s", 12,
+            "#009E73", "MedSAM2 (fine-tuned)", "s",
+        ),
+        (
+            [(n, s[metric_key]) for n, path in DINO3 if (s := load(path))],
+            "#56B4E9", "DINOv3 frozen + head", "^",
         ),
         (
             [(n, s[metric_key]) for n, path in DINO2 if (s := load(path))],
-            "#56B4E9", "DINOv2 frozen + head", "^", -16,
+            "#000000", "DINOv2 frozen + head", "v",
         ),
     ]
-    for pts, color, name, marker, name_dy in curves:
+    # curves converge at the largest budget, so values live in the tables;
+    # only the low-budget end (where the arms differ) is labeled here
+    for pts, color, name, marker in curves:
         if not pts:
             continue
         xs, ys = zip(*pts, strict=True)
-        ax.plot(xs, ys, color=color, marker=marker, markersize=6, linewidth=2)
-        for x, y in pts:
-            ax.annotate(
-                f"{y:.2f}", xy=(x, y), xytext=(0, 9 if name_dy < 0 else -14),
-                textcoords="offset points", fontsize=8, color=INK, ha="center",
-            )
+        ax.plot(
+            xs, ys, color=color, marker=marker, markersize=6, linewidth=2, label=name
+        )
         ax.annotate(
-            name, xy=(xs[0], ys[0]), xytext=(0, name_dy),
-            textcoords="offset points", fontsize=9, color=color, ha="left",
+            f"{ys[0]:.2f}", xy=(xs[0], ys[0]), xytext=(-4, 6),
+            textcoords="offset points", fontsize=8, color=INK, ha="right",
         )
     ax.set_xscale("log")
     ax.set_xticks([20, 40, 100, 400])
@@ -119,6 +128,10 @@ def draw(ax, metric_key: str) -> None:
     for spine in ("top", "right"):
         ax.spines[spine].set_visible(False)
     ax.tick_params(colors=MUTED, labelsize=8)
+    ax.legend(
+        loc="lower right", fontsize=8, frameon=False, labelcolor=INK,
+        handlelength=1.6, borderaxespad=1.0,
+    )
 
 
 def main() -> None:
@@ -133,7 +146,8 @@ def main() -> None:
     ax.set_ylabel("Test Dice (mean over structures, excl. background)", fontsize=9, color=INK)
     ax.set_xlabel("Labeled training patients", fontsize=9, color=INK)
     ax.set_title(
-        "How many labels until supervised beats zero-shot?", fontsize=11, color=INK, pad=12
+        "Train, adapt, or prompt? Segmentation quality vs annotation budget",
+        fontsize=11, color=INK, pad=12,
     )
     fig.tight_layout()
     fig.subplots_adjust(right=0.78)
