@@ -119,7 +119,13 @@ class SeggptBackend:
             num_labels=1,
             return_tensors="pt",
         )
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        # the model casts the two image tensors to its dtype but not the
+        # masks, which fails in fp16; cast everything floating here
+        dtype = self.model.dtype
+        inputs = {
+            k: v.to(self.device, dtype) if v.is_floating_point() else v.to(self.device)
+            for k, v in inputs.items()
+        }
         with torch.no_grad():
             out = self.model(**inputs, feature_ensemble=True, embedding_type="semantic")
         maps = self.processor.post_process_semantic_segmentation(out, num_labels=1)

@@ -37,3 +37,12 @@ Training died with `CUDA error: no kernel image is available for execution on th
 device`: kernels get a Tesla P100 (Pascal, sm_60) by default, and recent PyTorch
 wheels no longer ship Pascal kernels. Fix: request a T4 explicitly, which needs a
 current kaggle CLI (2.x): `kaggle kernels push -p kaggle/ --accelerator NvidiaTeslaT4`.
+
+**2026-09-12 - transformers SegGPT casts images but not masks to the model dtype.**
+`SegGptModel.forward` converts `pixel_values` and `prompt_pixel_values` to the
+weight dtype and then feeds `prompt_masks` (still float32) through the same
+patch embedding, so a model loaded in fp16 fails with `Input type (float) and
+bias type (c10::Half) should be the same` (transformers 5.x). Fixed on our side
+by casting every floating input to `model.dtype` before the call. Worth an
+upstream one-line fix (cast `prompt_masks` alongside the other two), candidate
+contribution.

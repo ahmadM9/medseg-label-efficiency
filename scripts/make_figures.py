@@ -44,6 +44,21 @@ DINO3 = [
     (100, "outputs/dino3_head_p25/test_metrics.json"),
     (400, "outputs/dino3_head_full/test_metrics.json"),
 ]
+# in-context arms: the budget subset is shown at test time, nothing is trained.
+# main rows only (universeg K=32, seggpt K=8); the K=8/K=64 universeg rows are
+# supplementary and live in the tables
+UNIVERSEG = [
+    (20, "outputs/universeg_p05/test_metrics.json"),
+    (40, "outputs/universeg_p10/test_metrics.json"),
+    (100, "outputs/universeg_p25/test_metrics.json"),
+    (400, "outputs/universeg_full/test_metrics.json"),
+]
+SEGGPT = [
+    (20, "outputs/seggpt_p05/test_metrics.json"),
+    (40, "outputs/seggpt_p10/test_metrics.json"),
+    (100, "outputs/seggpt_p25/test_metrics.json"),
+    (400, "outputs/seggpt_full/test_metrics.json"),
+]
 ZERO_SHOT = [
     ("SAM 2.1 · box", "outputs/kaggle-sam-eval/outputs/sam2_box/test_metrics.json"),
     ("MedSAM2 · box", "outputs/kaggle-sam-eval/outputs/medsam2_box/test_metrics.json"),
@@ -105,7 +120,19 @@ def draw(ax, metric_key: str) -> None:
             [(n, s[metric_key]) for n, path in DINO2 if (s := load(path))],
             "#000000", "DINOv2 frozen + head", "v",
         ),
+        # okabe-ito is used up; these two passed the normal-vision check
+        # against the four curve colours and are told apart from each other
+        # by marker and the dotted line as well (no colour-only identity)
+        (
+            [(n, s[metric_key]) for n, path in UNIVERSEG if (s := load(path))],
+            "#A6611A", "UniverSeg in-context (K=32)", "D",
+        ),
+        (
+            [(n, s[metric_key]) for n, path in SEGGPT if (s := load(path))],
+            "#7B3294", "SegGPT in-context (K=8)", "P",
+        ),
     ]
+    dotted = {"UniverSeg in-context (K=32)", "SegGPT in-context (K=8)"}
     # curves converge at the largest budget, so values live in the tables;
     # only the low-budget end (where the arms differ) is labeled here
     for pts, color, name, marker in curves:
@@ -113,7 +140,8 @@ def draw(ax, metric_key: str) -> None:
             continue
         xs, ys = zip(*pts, strict=True)
         ax.plot(
-            xs, ys, color=color, marker=marker, markersize=6, linewidth=2, label=name
+            xs, ys, color=color, marker=marker, markersize=6, linewidth=2, label=name,
+            linestyle=":" if name in dotted else "-",
         )
         ax.annotate(
             f"{ys[0]:.2f}", xy=(xs[0], ys[0]), xytext=(-4, 6),
