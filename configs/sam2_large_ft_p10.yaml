@@ -1,0 +1,17 @@
+# Scale ablation: SAM2.1-large decoder fine-tuning at the 10% budget (40 patients,
+# seed-0 subset). Same decoder module and recipe as the MedSAM2 runs, so this
+# asks whether encoder scale substitutes for medical pretraining.
+dataset: camus
+data_root: data/camus
+model: sam2_large
+out_dir: outputs/sam2_large_ft_p10
+train_subset: configs/subsets/train_p10.txt
+batch_size: 16
+jitter_px: 5
+seed: 42
+
+training:
+  steps: 5000
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  val_interval: 250

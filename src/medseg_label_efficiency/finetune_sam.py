@@ -1,17 +1,19 @@
-"""Fine-tune the MedSAM2 mask decoder on a label-budget subset.
+"""Fine-tune the mask decoder of a promptable model on a label-budget subset.
 
     python -m medseg_label_efficiency.finetune_sam --config configs/medsam2_ft_p05.yaml
 
 Recipe: image encoder and prompt encoder stay frozen; only the mask decoder
-(~4M params) trains. Training samples are (cached image embedding, jittered
-ground-truth box, structure mask); the jitter is redrawn every step, acting
-as augmentation. Because the encoder is frozen, every image's features are
-computed once and cached, so decoder steps are cheap.
+(about 4M params, the same module in every sam2 variant) trains. Training
+samples are (cached image embedding, jittered ground-truth box, structure
+mask); the jitter is redrawn every step, acting as augmentation. Because the
+encoder is frozen, every image's features are computed once and cached, so
+decoder steps are cheap. The config's "model" names the registry entry
+(default medsam2; sam2_large is the scale ablation).
 
-Geometry note: sam2 resizes inputs to a 512x512 square (not aspect-
-preserving), so ground-truth masks are nearest-resized to that same square
-and the loss lives in that space. Test-set evaluation goes through the
-normal eval_sam.py native-grid protocol instead.
+Geometry: sam2 resizes inputs to a square of the model's image size (512 for
+MedSAM2, 1024 for the stock variants), not aspect-preserving, so ground-truth
+masks are nearest-resized to that same square and the loss lives in that
+space. Test-set evaluation goes through eval_sam.py's native-grid protocol.
 """
 
 import argparse
@@ -32,11 +34,8 @@ from medseg_label_efficiency.eval_sam import to_rgb_uint8
 from medseg_label_efficiency.promptable import Sam2Backend
 from medseg_label_efficiency.prompts import box_from_mask, sample_rng
 
-MODEL_SIZE = 512  # MedSAM2's input resolution
-
 
 def freeze_all_but_decoder(model: torch.nn.Module) -> int:
-    """Only sam_mask_decoder trains; returns the trainable-parameter count."""
     trainable = 0
     for name, param in model.named_parameters():
         param.requires_grad = name.startswith("sam_mask_decoder")
@@ -45,17 +44,20 @@ def freeze_all_but_decoder(model: torch.nn.Module) -> int:
 
 
 def build_pairs(entries: list[dict], structure_ids) -> list[tuple[int, int]]:
-    """(image index, structure id) pairs, skipping structures absent from GT."""
+    # (image index, structure id) pairs; a structure absent from the GT has
+    # no box to prompt with, so it is skipped
     pairs = []
     for i, entry in enumerate(entries):
         for structure_id in structure_ids:
-            if entry["gt512"][structure_id - 1].any():
+            if entry["gt_square"][structure_id - 1].any():
                 pairs.append((i, structure_id))
     return pairs
 
 
 def precompute(backend: Sam2Backend, samples: list[dict], structure_ids) -> list[dict]:
-    """Run the frozen encoder once per image; cache features + 512-square GT."""
+    # the frozen encoder runs once per image; features and the GT resized to
+    # the model's square are cached in RAM (fp16 features, bool masks)
+    size = backend.predictor.model.image_size
     keys = ["image", "label"]
     load = Compose([LoadImaged(keys=keys), EnsureChannelFirstd(keys=keys)])
     entries = []
@@ -63,11 +65,10 @@ def precompute(backend: Sam2Backend, samples: list[dict], structure_ids) -> list
         data = load({"image": sample["image"], "label": sample["label"]})
         rgb = to_rgb_uint8(data["image"][0].numpy())
         gt_map = torch.from_numpy(data["label"][0].numpy().astype(np.int64))
-        gt512 = torch.stack(
+        gt_square = torch.stack(
             [
                 F.interpolate(
-                    (gt_map == s).float()[None, None], size=(MODEL_SIZE, MODEL_SIZE),
-                    mode="nearest",
+                    (gt_map == s).float()[None, None], size=(size, size), mode="nearest"
                 )[0, 0].bool()
                 for s in structure_ids
             ]
@@ -79,7 +80,7 @@ def precompute(backend: Sam2Backend, samples: list[dict], structure_ids) -> list
             {
                 "embed": feats["image_embed"][0].detach().to("cpu", torch.float16),
                 "hr": [f[0].detach().to("cpu", torch.float16) for f in feats["high_res_feats"]],
-                "gt512": gt512,
+                "gt_square": gt_square,
                 "patient": sample["patient"],
             }
         )
@@ -87,7 +88,8 @@ def precompute(backend: Sam2Backend, samples: list[dict], structure_ids) -> list
 
 
 def decode_batch(model, entries, pairs, boxes, device):
-    """Prompt-encode the boxes and run the mask decoder; returns 512-sized logits."""
+    # prompt-encode the boxes and run the mask decoder; logits come back at
+    # the model's square size
     embed = torch.stack([entries[i]["embed"] for i, _ in pairs]).to(device, torch.float32)
     hr = [
         torch.stack([entries[i]["hr"][level] for i, _ in pairs]).to(device, torch.float32)
@@ -108,13 +110,14 @@ def decode_batch(model, entries, pairs, boxes, device):
         repeat_image=False,
         high_res_features=hr,
     )
-    return F.interpolate(low_res, size=(MODEL_SIZE, MODEL_SIZE), mode="bilinear")
+    size = model.image_size
+    return F.interpolate(low_res, size=(size, size), mode="bilinear")
 
 
 def draw_boxes(entries, pairs, jitter_px, rng=None, fixed_seed=False):
     boxes = []
     for i, structure_id in pairs:
-        mask = entries[i]["gt512"][structure_id - 1].numpy()
+        mask = entries[i]["gt_square"][structure_id - 1].numpy()
         box_rng = (
             sample_rng(entries[i]["patient"], structure_id) if fixed_seed else rng
         )
@@ -131,7 +134,7 @@ def validate(model, entries, pairs, jitter_px, device, batch_size) -> float:
         logits = decode_batch(model, entries, chunk, boxes, device)
         preds = logits[:, 0] > 0
         for (i, structure_id), pred in zip(chunk, preds, strict=True):
-            gt = entries[i]["gt512"][structure_id - 1].to(device)
+            gt = entries[i]["gt_square"][structure_id - 1].to(device)
             denom = pred.sum() + gt.sum()
             dices.append((2 * (pred & gt).sum() / denom).item() if denom else float("nan"))
     return float(np.nanmean(dices))
@@ -158,8 +161,10 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     latest_path, best_path = out_dir / "decoder_latest.pt", out_dir / "decoder_best.pt"
 
-    backend = Sam2Backend("medsam2", str(device))
+    model_name = cfg.get("model", "medsam2")
+    backend = Sam2Backend(model_name, str(device))
     model = backend.predictor.model
+    print(f"fine-tuning {model_name} at image size {model.image_size}")
     n_trainable = freeze_all_but_decoder(model)
     print(f"trainable decoder parameters: {n_trainable / 1e6:.2f}M")
 
@@ -207,12 +212,14 @@ def main() -> None:
             path,
         )
 
-    mlflow.set_experiment("medsam2_finetune")
+    mlflow.set_experiment(f"{model_name}_finetune")
     with mlflow.start_run(run_id=run_id) as run:
         if run_id is None:
             mlflow.log_params(
                 {
-                    "steps": steps_total, "lr": tr["lr"], "batch_size": batch_size,
+                    "model": model_name, "image_size": model.image_size,
+                    "train_subset": cfg.get("train_subset"), "steps": steps_total,
+                    "lr": tr["lr"], "batch_size": batch_size,
                     "train_patients": len({s["patient"] for s in train_samples}),
                     "jitter_px": jitter, "seed": cfg["seed"], "device": device.type,
                 }
@@ -225,7 +232,7 @@ def main() -> None:
             boxes = draw_boxes(train_entries, chunk, jitter, rng=rng)
             logits = decode_batch(model, train_entries, chunk, boxes, device)
             gts = torch.stack(
-                [train_entries[i]["gt512"][s - 1] for i, s in chunk]
+                [train_entries[i]["gt_square"][s - 1] for i, s in chunk]
             ).to(device, torch.float32)[:, None]
             loss = dice_loss(logits, gts) + F.binary_cross_entropy_with_logits(logits, gts)
             optimizer.zero_grad()
