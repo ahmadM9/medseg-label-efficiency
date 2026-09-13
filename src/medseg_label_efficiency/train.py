@@ -142,6 +142,7 @@ def main() -> None:
                     "weight_decay": tr["weight_decay"],
                     "channels": cfg["model"]["channels"],
                     "seed": cfg["seed"],
+                    "train_subset": cfg.get("train_subset"),
                     "train_samples": len(train_ds),
                     "device": device.type,
                     "amp": use_amp,

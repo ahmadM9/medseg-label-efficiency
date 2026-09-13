@@ -3,9 +3,9 @@
     python -m medseg_label_efficiency.train_head --config configs/dino2_head_p05.yaml
 
 The encoder (encoders.py registry) never trains; each image's patch-token
-grid is computed once and cached, so head steps are cheap — the same trick
-finetune_sam.py uses. Unlike the promptable arms this one is FULLY
-AUTOMATIC: multi-class output, no prompts, same loss family as the U-Net.
+grid is computed once and cached, so head steps are cheap, the same trick
+finetune_sam.py uses. Unlike the promptable arms this one is fully
+automatic: multi-class output, no prompts, same loss family as the U-Net.
 Loss and validation live in the encoder's square input space; the official
 native-grid evaluation is eval_head.py.
 """
@@ -32,7 +32,8 @@ from medseg_label_efficiency.train import pick_device
 
 
 def precompute(encoder: FrozenEncoder, samples: list[dict]) -> list[dict]:
-    """Frozen features + square-resized GT label map, cached per image."""
+    # frozen features plus the GT label map resized to the encoder's square,
+    # cached per image; the GT stays uint8 so 1600 images fit in RAM
     keys = ["image", "label"]
     load = Compose([LoadImaged(keys=keys), EnsureChannelFirstd(keys=keys)])
     size = encoder.input_size
@@ -138,6 +139,7 @@ def main() -> None:
                 {
                     "encoder": cfg["encoder"], "steps": steps_total, "lr": tr["lr"],
                     "batch_size": batch_size, "seed": cfg["seed"],
+                    "train_subset": cfg.get("train_subset"),
                     "train_patients": len({s["patient"] for s in train_samples}),
                     "device": device.type,
                 }
