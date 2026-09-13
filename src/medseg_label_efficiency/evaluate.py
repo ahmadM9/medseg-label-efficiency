@@ -4,12 +4,13 @@
 
 Follows the CAMUS challenge protocol: the network predicts at its training
 resolution, the prediction is resized back to the image's original grid, and
-metrics are computed there against the untouched ground truth — Dice as
+metrics are computed there against the untouched ground truth: Dice as
 overlap, HD95 in millimeters using the pixel spacing from the NIfTI header.
 
 Writes per-sample metrics (CSV), a summary with per-structure Dice/HD95 and
 a breakdown by image quality (JSON), and prints the summary. The same metrics
-module is used by the SAM 2.1 / MedSAM2 arms.
+module is used by every other arm. --save-masks also writes each predicted
+label map to <out_dir>/masks/ for the cascade prompts and the EF analysis.
 """
 
 import argparse
@@ -23,7 +24,7 @@ from monai.transforms import Compose, EnsureChannelFirstd, LoadImaged
 from medseg_label_efficiency.config import load_config
 from medseg_label_efficiency.data.registry import get_dataset_module
 from medseg_label_efficiency.metrics import MetricAccumulator
-from medseg_label_efficiency.reporting import quality_breakdown, write_metrics_files
+from medseg_label_efficiency.reporting import quality_breakdown, save_mask, write_metrics_files
 from medseg_label_efficiency.train import build_model, pick_device
 
 
@@ -34,6 +35,7 @@ def main() -> None:
     parser.add_argument("--split", default="test")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--limit", type=int, default=0, help="truncate the split (smoke runs)")
+    parser.add_argument("--save-masks", action="store_true", help="write masks to <out_dir>/masks/")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -69,6 +71,8 @@ def main() -> None:
                 meta=[{k: sample[k] for k in ds.META_KEYS}],
                 spacing=(float(spacing[0]), float(spacing[1])),
             )
+            if args.save_masks:
+                save_mask(out_dir, sample, pred[0, 0].numpy())
 
     records = acc.records()
     summary = {

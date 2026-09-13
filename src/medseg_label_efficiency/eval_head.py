@@ -21,7 +21,7 @@ from medseg_label_efficiency.data.registry import get_dataset_module
 from medseg_label_efficiency.encoders import FrozenEncoder
 from medseg_label_efficiency.eval_sam import to_rgb_uint8
 from medseg_label_efficiency.metrics import MetricAccumulator
-from medseg_label_efficiency.reporting import quality_breakdown, write_metrics_files
+from medseg_label_efficiency.reporting import quality_breakdown, save_mask, write_metrics_files
 from medseg_label_efficiency.seg_head import build_head
 from medseg_label_efficiency.train import pick_device
 
@@ -33,6 +33,7 @@ def main() -> None:
     parser.add_argument("--split", default="test")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--save-masks", action="store_true", help="write masks to <out_dir>/masks/")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -69,6 +70,8 @@ def main() -> None:
                 meta=[{k: sample[k] for k in ds.META_KEYS}],
                 spacing=(float(spacing[0]), float(spacing[1])),
             )
+            if args.save_masks:
+                save_mask(out_dir, sample, pred[0, 0].numpy())
 
     records = acc.records()
     summary = {

@@ -7,6 +7,8 @@ every structure, K supports are drawn from the pool, the model predicts the
 structure from those examples alone, and the mask is scored as a binary
 problem on the native grid with HD95 in millimeters, the same path as the
 prompted arms. No weight is updated and nothing is tuned on validation data.
+--save-masks writes the combined label map per image to <out_dir>/masks/;
+--draw-seed reseeds the support draws (the SegGPT draw-noise floor).
 """
 
 import argparse
@@ -32,7 +34,7 @@ from medseg_label_efficiency.incontext import (
 )
 from medseg_label_efficiency.metrics import binary_scores
 from medseg_label_efficiency.prompts import sample_rng
-from medseg_label_efficiency.reporting import write_metrics_files
+from medseg_label_efficiency.reporting import combine_binary_masks, save_mask, write_metrics_files
 from medseg_label_efficiency.train import pick_device
 
 
@@ -46,6 +48,8 @@ def evaluate_model(
     shots: int,
     draws: int,
     match_keys: list[str],
+    draw_seed: int = 0,
+    save_dir: Path | None = None,
 ) -> list[dict]:
     size = pool_images.shape[-1]
     keys = ["image", "label"]
@@ -60,11 +64,15 @@ def evaluate_model(
         candidates = filter_pool(pool, query, match_keys)
 
         row = {k: query[k] for k in ds.META_KEYS}
-        masks = []
+        masks = {}
         for structure_id, name in ds.STRUCTURES.items():
             # one seed per image and structure, so every structure gets its
-            # own support draws and every run gets the same ones
-            rng = sample_rng(*(query[k] for k in ds.META_KEYS), structure_id)
+            # own support draws and every run gets the same ones; a nonzero
+            # draw seed is appended so the seed-0 draws stay what they were
+            parts = [query[k] for k in ds.META_KEYS] + [structure_id]
+            if draw_seed:
+                parts.append(draw_seed)
+            rng = sample_rng(*parts)
             preds = []
             for _ in range(draws):
                 idx = draw_supports(candidates, shots, rng)
@@ -76,10 +84,12 @@ def evaluate_model(
             dice, hd95 = binary_scores(pred, gt_map == structure_id, spacing)
             row[f"dice_{name}"] = dice
             row[f"hd95_{name}"] = hd95
-            masks.append(pred)
+            masks[structure_id] = pred
         # per-structure binary tasks may claim the same pixel twice, which
         # the argmax arms cannot do; measured rather than assumed away
-        row["overlap_frac"] = float((np.sum(masks, axis=0) >= 2).mean())
+        label_map, row["overlap_frac"] = combine_binary_masks(masks)
+        if save_dir is not None:
+            save_mask(save_dir, query, label_map)
         records.append(row)
     return records
 
@@ -94,6 +104,11 @@ def main() -> None:
         "--shots", type=int, default=0,
         help="override the config's support size; output goes to <out_dir>_k<shots>",
     )
+    parser.add_argument(
+        "--draw-seed", type=int, default=0,
+        help="extra seed for the support draws; output goes to <out_dir>_d<seed>",
+    )
+    parser.add_argument("--save-masks", action="store_true", help="write masks to <out_dir>/masks/")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -103,7 +118,11 @@ def main() -> None:
     shots = args.shots or cfg["shots"]
     draws = cfg["draws"]
     match_keys = list(cfg.get("match_keys", []))
-    out_dir = Path(cfg["out_dir"] + (f"_k{args.shots}" if args.shots else ""))
+    out_dir = Path(
+        cfg["out_dir"]
+        + (f"_k{args.shots}" if args.shots else "")
+        + (f"_d{args.draw_seed}" if args.draw_seed else "")
+    )
 
     pool = ds.build_samples(cfg["data_root"], "train")
     if cfg.get("train_subset"):
@@ -123,7 +142,8 @@ def main() -> None:
     pool_images, pool_labels = load_pool(pool, entry["input_size"])
     backend = build_backend(cfg["model"], str(device))
     records = evaluate_model(
-        backend, queries, pool, pool_images, pool_labels, ds, shots, draws, match_keys
+        backend, queries, pool, pool_images, pool_labels, ds, shots, draws, match_keys,
+        draw_seed=args.draw_seed, save_dir=out_dir if args.save_masks else None,
     )
 
     rule = (
@@ -137,6 +157,7 @@ def main() -> None:
         "n_samples": len(records),
         "shots": shots,
         "draws": draws,
+        "draw_seed": args.draw_seed,
         "match_keys": match_keys,
         "n_pool": len(pool),
         "n_candidates_min": int(n_candidates),
@@ -149,7 +170,6 @@ def main() -> None:
         "excluded when either mask is empty; structures may overlap (overlap_frac); "
         + entry["training_data"],
         **summarize(records, ds),
-        "overlap_mean": float(np.mean([r["overlap_frac"] for r in records])),
     }
     write_metrics_files(out_dir, args.split, summary, records)
 
