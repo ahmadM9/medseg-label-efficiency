@@ -1,20 +1,27 @@
-"""Promptable-model registry and the sam2 backend behind every prompted arm.
-
-PROMPTABLE_MODELS is the plug-and-play point: each entry names a checkpoint,
-the hydra config that builds its architecture, and (when the config is not
-shipped inside the sam2 package) a vendored yaml to inject. Adding a model
-variant — e.g. sam2_large for the scale ablation — is one new entry here.
-"""
-
 import tempfile
 from pathlib import Path
 
 import numpy as np
 
+# the promptable-model registry: a checkpoint, the hydra config that builds
+# its architecture, and (when the sam2 package does not ship that config) a
+# vendored yaml to inject. one new entry adds a model to every prompted CLI.
+# "sam2" is the tiny variant, MedSAM2's own base, so the two differ only by
+# medical fine-tuning; base+ and large are the scale ablation rows
 PROMPTABLE_MODELS = {
     "sam2": {
         "checkpoint": "checkpoints/sam2.1_hiera_tiny.pt",
         "config": "configs/sam2.1/sam2.1_hiera_t.yaml",
+        "vendored_config": None,
+    },
+    "sam2_bplus": {
+        "checkpoint": "checkpoints/sam2.1_hiera_base_plus.pt",
+        "config": "configs/sam2.1/sam2.1_hiera_b+.yaml",
+        "vendored_config": None,
+    },
+    "sam2_large": {
+        "checkpoint": "checkpoints/sam2.1_hiera_large.pt",
+        "config": "configs/sam2.1/sam2.1_hiera_l.yaml",
         "vendored_config": None,
     },
     "medsam2": {
@@ -29,8 +36,8 @@ PROMPTABLE_MODELS = {
 
 
 class Sam2Backend:
-    """Thin wrapper so tests can swap in a mock. predict() takes an RGB uint8
-    image plus one prompt and returns one boolean mask."""
+    # thin wrapper so tests can swap in a mock: predict() takes an RGB uint8
+    # image plus one prompt and returns one boolean mask
 
     def __init__(self, model: str, device: str):
         import torch
@@ -79,8 +86,8 @@ class Sam2Backend:
 
 
 class Sam2VideoBackend:
-    """The video predictor behind eval_video.py: one box per object on one
-    frame, masks propagated to every other frame through sam2's memory."""
+    # the video predictor behind eval_video.py: one box per object on one
+    # frame, masks propagated to every other frame through sam2's memory
 
     def __init__(self, model: str, device: str):
         import torch
@@ -98,8 +105,8 @@ class Sam2VideoBackend:
         )
 
     def track(self, frames_rgb, boxes: dict, prompt_frame: int) -> dict:
-        """boxes: obj_id -> (r0, c0, r1, c1) on prompt_frame. Returns
-        frame_idx -> {obj_id: bool mask at native size} for every frame."""
+        # boxes: obj_id -> (r0, c0, r1, c1) on prompt_frame; returns
+        # frame_idx -> {obj_id: bool mask at native size} for every frame
         from PIL import Image
 
         # init_state only reads a JPEG folder or an mp4; the MedSAM2 authors'

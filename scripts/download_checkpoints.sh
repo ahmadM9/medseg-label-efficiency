@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fetch the promptable-model checkpoints (and MedSAM2's config, which is not
-# part of the sam2 package) into checkpoints/. Sizes: ~150 MB each.
+# part of the sam2 package) into checkpoints/. Tiny and MedSAM2 are about
+# 150 MB each; base+ (320 MB) and large (900 MB) are the scale ablation.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p checkpoints
@@ -14,6 +15,10 @@ fetch() {
 
 fetch "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt" \
     checkpoints/sam2.1_hiera_tiny.pt
+fetch "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt" \
+    checkpoints/sam2.1_hiera_base_plus.pt
+fetch "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt" \
+    checkpoints/sam2.1_hiera_large.pt
 fetch "https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_latest.pt" \
     checkpoints/MedSAM2_latest.pt
 fetch "https://raw.githubusercontent.com/bowang-lab/MedSAM2/main/sam2/configs/sam2.1_hiera_t512.yaml" \
