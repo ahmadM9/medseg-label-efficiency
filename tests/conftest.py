@@ -1,8 +1,12 @@
+import sys
 from pathlib import Path
 
 import pytest
 
 DATA_ROOT = Path(__file__).parents[1] / "data" / "camus"
+
+# the analysis scripts are plain files, not a package; tests import them
+sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 
 
 def pytest_collection_modifyitems(config, items):

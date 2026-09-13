@@ -1,12 +1,14 @@
-"""Generate the nested, quality-stratified label subsets for Phase 4.
+"""Generate the nested, quality-stratified label subsets.
 
-    python scripts/make_subsets.py [--data-root data/camus]
+    python scripts/make_subsets.py [--data-root data/camus] [--seed 42] [--suffix ""]
 
 From the official 400 training patients, draws 20 / 40 / 100 (5 / 10 / 25%)
 such that each subset keeps the dataset's image-quality mix and each smaller
 subset is contained in the next larger one (a growing annotation budget).
-Writes configs/subsets/train_p{05,10,25}.txt — committed to the repo so the
-experiment is exactly reproducible.
+Writes configs/subsets/train_p{05,10,25}<suffix>.txt, committed to the repo
+so the experiment is exactly reproducible. Seed 42 with no suffix is the
+seed-0 family every result so far used; --seed 1 --suffix _s1 and
+--seed 2 --suffix _s2 are the extra subset draws behind the error bars.
 
 Method: stratum = the sorted pair of per-view ImageQuality labels; one seeded
 shuffle per stratum; per-stratum quotas proportional to stratum size
@@ -36,8 +38,8 @@ def patient_stratum(data_root: Path, patient: str) -> str:
 
 
 def quotas_for(sizes: list[int], stratum_sizes: dict[str, int], total: int) -> dict:
-    """Per-stratum quota for each subset size, largest-remainder rounded and
-    forced non-decreasing across sizes so prefixes nest."""
+    # largest-remainder rounding, and a stratum's quota may never shrink as
+    # the subset grows, otherwise prefixes of one shuffle would not nest
     quotas = {name: {} for name in stratum_sizes}
     previous = dict.fromkeys(stratum_sizes, 0)
     for k in sizes:
@@ -58,28 +60,17 @@ def quotas_for(sizes: list[int], stratum_sizes: dict[str, int], total: int) -> d
     return quotas
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-root", default="data/camus")
-    parser.add_argument("--out", default="configs/subsets")
-    args = parser.parse_args()
-
-    data_root = Path(args.data_root)
-    patients = read_split(data_root, "train")
-    strata = defaultdict(list)
-    for patient in patients:
-        strata[patient_stratum(data_root, patient)].append(patient)
-
-    rng = np.random.default_rng(SEED)
+def draw_subsets(strata: dict[str, list[str]], seed: int) -> dict[str, list[str]]:
+    # strata: stratum name -> its patients; returns subset name -> sorted patients
+    strata = {s: sorted(m) for s, m in strata.items()}
+    rng = np.random.default_rng(seed)
     for members in strata.values():
-        members.sort()
         rng.shuffle(members)
-
+    total = sum(len(m) for m in strata.values())
     stratum_sizes = {s: len(m) for s, m in strata.items()}
-    quotas = quotas_for(sorted(SIZES.values()), stratum_sizes, len(patients))
+    quotas = quotas_for(sorted(SIZES.values()), stratum_sizes, total)
 
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    subsets = {}
     chosen_prev: set[str] = set()
     for name, k in sorted(SIZES.items(), key=lambda kv: kv[1]):
         chosen = []
@@ -87,13 +78,34 @@ def main() -> None:
             chosen.extend(members[: quotas[s][k]])
         assert chosen_prev <= set(chosen), "nesting violated"
         chosen_prev = set(chosen)
-        path = out_dir / f"train_{name}.txt"
-        path.write_text("\n".join(sorted(chosen)) + "\n")
+        subsets[name] = sorted(chosen)
+    return subsets
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-root", default="data/camus")
+    parser.add_argument("--out", default="configs/subsets")
+    parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--suffix", default="", help="appended to the file stem, e.g. _s1")
+    args = parser.parse_args()
+
+    data_root = Path(args.data_root)
+    strata = defaultdict(list)
+    for patient in read_split(data_root, "train"):
+        strata[patient_stratum(data_root, patient)].append(patient)
+    subsets = draw_subsets(strata, args.seed)
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, chosen in subsets.items():
+        path = out_dir / f"train_{name}{args.suffix}.txt"
+        path.write_text("\n".join(chosen) + "\n")
         counts = defaultdict(int)
         for p in chosen:
             counts[patient_stratum(data_root, p)] += 1
         dist = ", ".join(f"{s}: {n}" for s, n in sorted(counts.items()))
-        print(f"{path}  ({k} patients)  {dist}")
+        print(f"{path}  ({len(chosen)} patients, seed {args.seed})  {dist}")
 
 
 if __name__ == "__main__":
