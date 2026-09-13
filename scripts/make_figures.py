@@ -1,10 +1,14 @@
-"""Render the label-efficiency figures from the evaluation JSONs.
+"""Render the label-efficiency figures from the evaluation results.
 
-    python scripts/make_figures.py [--out outputs/figures]
+    python scripts/make_figures.py [--outputs outputs] [--out outputs/figures]
 
-Reads whatever test_metrics.json files exist (missing points are skipped, so
-this works before all runs are done): the supervised U-Net at each label
-budget, and the four zero-shot configurations as horizontal reference lines.
+Reads whatever results exist (missing points are skipped, so this works
+before all runs are done): one curve per trained or in-context arm over the
+four label budgets, and the four tiny-model zero-shot configurations as
+horizontal reference lines. When scripts/aggregate_seeds.py has written
+outputs/seeds/<arm>.json, a curve shows the mean over seeds with a band of
+one SD; arms with a single seed are drawn without a band and say so in the
+legend.
 """
 
 import argparse
@@ -14,85 +18,69 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
 
-# x = number of labeled training patients
-SUPERVISED = [
-    (20, "outputs/camus_unet2d_p05/test_metrics.json"),
-    (40, "outputs/camus_unet2d_p10/test_metrics.json"),
-    (100, "outputs/camus_unet2d_p25/test_metrics.json"),
-    (400, "outputs/camus_unet2d/test_metrics.json"),
-]
-# same budgets, MedSAM2 with a fine-tuned decoder; its 0-label point is the
-# zero-shot MedSAM2 box line (same entity, same color)
-FINETUNED = [
-    (20, "outputs/medsam2_ft_p05/test_metrics.json"),
-    (40, "outputs/medsam2_ft_p10/test_metrics.json"),
-    (100, "outputs/medsam2_ft_p25/test_metrics.json"),
-    (400, "outputs/medsam2_ft_full/test_metrics.json"),
-]
-# frozen generalist encoders + trained head (automatic, like the U-Net)
-DINO2 = [
-    (20, "outputs/dino2_head_p05/test_metrics.json"),
-    (40, "outputs/dino2_head_p10/test_metrics.json"),
-    (100, "outputs/dino2_head_p25/test_metrics.json"),
-    (400, "outputs/dino2_head_full/test_metrics.json"),
-]
-DINO3 = [
-    (20, "outputs/dino3_head_p05/test_metrics.json"),
-    (40, "outputs/dino3_head_p10/test_metrics.json"),
-    (100, "outputs/dino3_head_p25/test_metrics.json"),
-    (400, "outputs/dino3_head_full/test_metrics.json"),
-]
-# in-context arms: the budget subset is shown at test time, nothing is trained.
-# main rows only (universeg K=32, seggpt K=8); the K=8/K=64 universeg rows are
-# supplementary and live in the tables
-UNIVERSEG = [
-    (20, "outputs/universeg_p05/test_metrics.json"),
-    (40, "outputs/universeg_p10/test_metrics.json"),
-    (100, "outputs/universeg_p25/test_metrics.json"),
-    (400, "outputs/universeg_full/test_metrics.json"),
-]
-SEGGPT = [
-    (20, "outputs/seggpt_p05/test_metrics.json"),
-    (40, "outputs/seggpt_p10/test_metrics.json"),
-    (100, "outputs/seggpt_p25/test_metrics.json"),
-    (400, "outputs/seggpt_full/test_metrics.json"),
-]
-ZERO_SHOT = [
-    ("SAM 2.1 · box", "outputs/kaggle-sam-eval/outputs/sam2_box/test_metrics.json"),
-    ("MedSAM2 · box", "outputs/kaggle-sam-eval/outputs/medsam2_box/test_metrics.json"),
-    ("MedSAM2 · point", "outputs/kaggle-sam-eval/outputs/medsam2_point/test_metrics.json"),
-    ("SAM 2.1 · point", "outputs/kaggle-sam-eval/outputs/sam2_point/test_metrics.json"),
-]
-# Okabe-Ito, validated colorblind-safe; identity is fixed, never cycled
-COLOR_SUPERVISED = "#0072B2"
-COLORS_ZERO_SHOT = ["#E69F00", "#009E73", "#CC79A7", "#D55E00"]
-INK, MUTED = "#333333", "#767676"
-
+from aggregate_seeds import ARMS, ZERO_SHOT  # noqa: E402
 from medseg_label_efficiency.data.registry import get_dataset_module  # noqa: E402
+
+# (arm, legend label, colour, marker, line style). okabe-ito for the first
+# four, validated colourblind-safe; the two in-context arms passed the
+# normal-vision check against them and are told apart by marker and the
+# dotted line as well (no colour-only identity). identity is fixed, never
+# cycled: a colour names one entity in every figure
+CURVES = [
+    ("unet", "U-Net (supervised)", "#0072B2", "o", "-"),
+    ("medsam2_ft", "MedSAM2 (fine-tuned)", "#009E73", "s", "-"),
+    ("dino3_head", "DINOv3 frozen + head", "#56B4E9", "^", "-"),
+    ("dino2_head", "DINOv2 frozen + head", "#000000", "v", "-"),
+    ("universeg", "UniverSeg in-context (K=32)", "#A6611A", "D", ":"),
+    ("seggpt", "SegGPT in-context (K=8)", "#7B3294", "P", ":"),
+]
+# the zero-shot references: the same green as the fine-tuned MedSAM2 curve
+# because it is the same entity at zero labels
+ZERO_SHOT_LINES = [
+    ("SAM 2.1 · box", "sam2_box", "#E69F00"),
+    ("MedSAM2 · box", "medsam2_box", "#009E73"),
+    ("MedSAM2 · point", "medsam2_point", "#CC79A7"),
+    ("SAM 2.1 · point", "sam2_point", "#D55E00"),
+]
+INK, MUTED = "#333333", "#767676"
 
 DATASET = get_dataset_module("camus")
 STRUCTURES = list(DATASET.STRUCTURES.values())
 TITLES = DATASET.STRUCTURE_TITLES
 
 
-def load(path: str) -> dict | None:
-    p = Path(path)
-    if not p.exists():
-        print(f"skipping missing {p}")
+def load_json(path: Path) -> dict | None:
+    if not path.exists():
+        print(f"skipping missing {path}")
         return None
-    with open(p) as f:
-        return json.load(f)
+    return json.loads(path.read_text())
 
 
-def draw(ax, metric_key: str) -> None:
-    points = [(n, s[metric_key]) for n, path in SUPERVISED if (s := load(path))]
-    lines = []
-    for (label, path), color in zip(ZERO_SHOT, COLORS_ZERO_SHOT, strict=True):
-        summary = load(path)
+def load_curve(root: Path, arm: str, metric: str) -> list[tuple[int, float, float | None, int]]:
+    # (budget, mean, sd or None, n_seeds) per budget; the seed aggregate is
+    # preferred, the seed-0 result file is the fallback before aggregation
+    seeds = load_json(root / "seeds" / f"{arm}.json") if (root / "seeds").exists() else None
+    points = []
+    for budget, out_dir in ARMS[arm].items():
+        entry = (seeds or {}).get("budgets", {}).get(str(budget))
+        if entry is not None and metric in entry["metrics"]:
+            m = entry["metrics"][metric]
+            points.append((budget, m["mean"], m["sd"], entry["n_seeds"]))
+            continue
+        summary = load_json(root / out_dir / "test_metrics.json")
         if summary is not None:
-            lines.append((summary[metric_key], label, color))
+            points.append((budget, summary[metric], None, 1))
+    return points
+
+
+def draw(ax, root: Path, metric: str) -> None:
+    lines = []
+    for label, key, color in ZERO_SHOT_LINES:
+        summary = load_json(root / ZERO_SHOT[key] / "test_metrics.json")
+        if summary is not None:
+            lines.append((summary[metric], label, color))
     # dashed line at the true value; label text dodged apart when lines coincide
     label_ys = [y for y, _, _ in lines]
     order = sorted(range(len(lines)), key=lambda i: label_ys[i])
@@ -106,42 +94,28 @@ def draw(ax, metric_key: str) -> None:
             f"{label}  {y:.2f}", xy=(1.01, label_y), xycoords=("axes fraction", "data"),
             fontsize=8, color=color, va="center",
         )
-    curves = [
-        (points, COLOR_SUPERVISED, "U-Net (supervised)", "o"),
-        (
-            [(n, s[metric_key]) for n, path in FINETUNED if (s := load(path))],
-            "#009E73", "MedSAM2 (fine-tuned)", "s",
-        ),
-        (
-            [(n, s[metric_key]) for n, path in DINO3 if (s := load(path))],
-            "#56B4E9", "DINOv3 frozen + head", "^",
-        ),
-        (
-            [(n, s[metric_key]) for n, path in DINO2 if (s := load(path))],
-            "#000000", "DINOv2 frozen + head", "v",
-        ),
-        # okabe-ito is used up; these two passed the normal-vision check
-        # against the four curve colours and are told apart from each other
-        # by marker and the dotted line as well (no colour-only identity)
-        (
-            [(n, s[metric_key]) for n, path in UNIVERSEG if (s := load(path))],
-            "#A6611A", "UniverSeg in-context (K=32)", "D",
-        ),
-        (
-            [(n, s[metric_key]) for n, path in SEGGPT if (s := load(path))],
-            "#7B3294", "SegGPT in-context (K=8)", "P",
-        ),
-    ]
-    dotted = {"UniverSeg in-context (K=32)", "SegGPT in-context (K=8)"}
+
     # curves converge at the largest budget, so values live in the tables;
     # only the low-budget end (where the arms differ) is labeled here
-    for pts, color, name, marker in curves:
-        if not pts:
+    for arm, name, color, marker, style in CURVES:
+        points = load_curve(root, arm, metric)
+        if not points:
             continue
-        xs, ys = zip(*pts, strict=True)
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        banded = [(x, y, sd) for x, y, sd, n in points if sd is not None and n > 1]
+        if banded:
+            bx, by, bsd = zip(*banded, strict=True)
+            ax.fill_between(
+                bx, [y - s for y, s in zip(by, bsd, strict=True)],
+                [y + s for y, s in zip(by, bsd, strict=True)],
+                color=color, alpha=0.15, linewidth=0,
+            )
+        else:
+            name = f"{name}, single seed"
         ax.plot(
             xs, ys, color=color, marker=marker, markersize=6, linewidth=2, label=name,
-            linestyle=":" if name in dotted else "-",
+            linestyle=style,
         )
         ax.annotate(
             f"{ys[0]:.2f}", xy=(xs[0], ys[0]), xytext=(-4, 6),
@@ -164,13 +138,15 @@ def draw(ax, metric_key: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--outputs", default="outputs")
     parser.add_argument("--out", default="outputs/figures")
     args = parser.parse_args()
+    root = Path(args.outputs)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(7.5, 4.6))
-    draw(ax, "dice_mean")
+    draw(ax, root, "dice_mean")
     ax.set_ylabel("Test Dice (mean over structures, excl. background)", fontsize=9, color=INK)
     ax.set_xlabel("Labeled training patients", fontsize=9, color=INK)
     ax.set_title(
@@ -184,7 +160,7 @@ def main() -> None:
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4.2), sharey=True)
     for ax, structure in zip(axes, STRUCTURES, strict=True):
-        draw(ax, f"dice_{structure}")
+        draw(ax, root, f"dice_{structure}")
         ax.set_title(TITLES[structure], fontsize=10, color=INK)
     axes[0].set_ylabel("Test Dice", fontsize=9, color=INK)
     axes[1].set_xlabel("Labeled training patients", fontsize=9, color=INK)
