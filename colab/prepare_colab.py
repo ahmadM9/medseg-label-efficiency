@@ -3,8 +3,10 @@
     python colab/prepare_colab.py [--input /content/input] \
         [--drive /content/drive/MyDrive/medseg-label-efficiency]
 
-Reads KAGGLE_USERNAME and KAGGLE_KEY from Colab Secrets (falls back to the
-environment outside Colab), downloads CAMUS and the gated DINOv3 snapshot
+Reads KAGGLE_USERNAME and KAGGLE_KEY from the environment, or from Colab
+Secrets when run inside the notebook kernel itself (a %%bash cell is a
+subprocess and cannot see the secret store; the launcher notebook exports
+them first), downloads CAMUS and the gated DINOv3 snapshot
 into <input>/<slug>/ on the local disk, and copies the stripped checkpoints
 from <drive>/checkpoints/outputs into <input>/checkpoints/outputs. Every step
 is skipped when its target already exists, so a rerun after a disconnect costs
