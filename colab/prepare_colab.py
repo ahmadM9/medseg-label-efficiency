@@ -18,7 +18,6 @@ import argparse
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 DATASETS = ("ahmadm10/camus-echo", "ahmadm10/dinov3-vits16")
@@ -50,7 +49,8 @@ def pull_dataset(slug: str, input_root: Path, env: dict[str, str]) -> Path:
     target.mkdir(parents=True, exist_ok=True)
     # the API delivers the files as uploaded, so CAMUS keeps its .nii.gz names
     # (the Kaggle mount gunzips them; the loader accepts both spellings)
-    cmd = [sys.executable, "-m", "kaggle", "datasets", "download", "-d", slug,
+    # the console script, not python -m: the package has no __main__ on Colab
+    cmd = [shutil.which("kaggle") or "kaggle", "datasets", "download", "-d", slug,
            "-p", str(target), "--unzip"]
     print("+", " ".join(cmd), flush=True)
     subprocess.run(cmd, check=True, env={**os.environ, **env})
