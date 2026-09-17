@@ -48,9 +48,14 @@ JOBS = [
     ("reeval_head", "dino2_head_p25"), ("reeval_head", "dino2_head_full"),
     ("incontext", "universeg_p05", 0, 0), ("incontext", "universeg_p10", 0, 0),
     ("incontext", "universeg_p25", 0, 0), ("incontext", "universeg_full", 0, 0),
+    ("incontext", "seggpt_p25", 0, 1), ("incontext", "seggpt_p25", 0, 2),
+]
+# the SegGPT mask re-runs are deferred (2026-09-15): about 6 h of GPU for an
+# EF column on the arm that is last at every budget. Move them back into
+# JOBS when spare GPU time exists.
+DEFERRED_JOBS = [
     ("incontext", "seggpt_p05", 0, 0), ("incontext", "seggpt_p10", 0, 0),
     ("incontext", "seggpt_p25", 0, 0), ("incontext", "seggpt_full", 0, 0),
-    ("incontext", "seggpt_p25", 0, 1), ("incontext", "seggpt_p25", 0, 2),
 ]
 
 GATED_SNAPSHOTS = {"dinov3-vits16": "checkpoints/dinov3_vits16_hf"}

@@ -50,6 +50,9 @@ def test_select_jobs_filters_by_kind_and_rejects_unknown(monkeypatch):
     assert m.select_jobs(jobs, "zeroshot,incontext") == [jobs[0], jobs[2]]
     with pytest.raises(SystemExit):
         m.select_jobs(jobs, "cascade")
+    # the deferred SegGPT rows stay out of the default job list
+    assert not set(m.DEFERRED_JOBS) & set(m.JOBS)
+    assert ("incontext", "seggpt_p25", 0, 1) in m.JOBS
 
 
 def test_prepare_colab_finds_camus_and_stages_checkpoints(monkeypatch, tmp_path):
