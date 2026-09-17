@@ -77,3 +77,37 @@ def test_prepare_colab_requires_both_secrets(monkeypatch):
         m.kaggle_credentials()
     monkeypatch.setenv("KAGGLE_KEY", "k")
     assert m.kaggle_credentials() == {"KAGGLE_USERNAME": "u", "KAGGLE_KEY": "k"}
+
+
+def test_cascade_jobs_build_the_box_source_commands(monkeypatch, tmp_path):
+    env = {
+        "LAUNCH_INPUT": str(tmp_path / "input"),
+        "LAUNCH_WORK": str(tmp_path / "work"),
+        "LAUNCH_REPO": str(ROOT),
+    }
+    m = load("run_scale_cascade", ROOT / "kaggle/scale/run_scale.py", monkeypatch, env)
+    (tmp_path / "input/camus-echo/database_nifti").mkdir(parents=True)
+    for arm in m.BOX_SOURCE.values():
+        (tmp_path / f"input/checkpoints/outputs/{arm}/masks").mkdir(parents=True)
+    for b in ("p05", "p10", "p25", "full"):
+        d = tmp_path / f"input/checkpoints/outputs/medsam2_ft_{b}"
+        d.mkdir(parents=True)
+        (d / "decoder_best.pt").write_bytes(b"x")
+    calls = []
+    monkeypatch.setattr(m, "run", lambda cmd, **kw: calls.append([str(c) for c in cmd]))
+    monkeypatch.setattr(m.subprocess, "run", lambda *a, **kw: None)
+    monkeypatch.setattr(sys, "argv", ["run_scale.py", "--only", "cascade", "--skip-install"])
+    m.main()
+    evals = [c for c in calls if "eval_sam" in " ".join(c)]
+    assert len(evals) == 8
+    for cmd in evals:
+        assert "--box-source" in cmd and cmd[cmd.index("--prompt") + 1] == "box"
+    zero, ft = evals[0], evals[1]
+    assert zero[zero.index("--box-source") + 1].endswith("camus_unet2d_p05")
+    assert zero[zero.index("--out-dir") + 1].endswith("medsam2_cascade_p05")
+    assert "--decoder-weights" not in zero
+    assert ft[ft.index("--decoder-weights") + 1].endswith("medsam2_ft_p05/decoder_best.pt")
+    assert ft[ft.index("--out-dir") + 1].endswith("medsam2_ft_cascade_p05")
+    assert evals[-1][evals[-1].index("--box-source") + 1].endswith("camus_unet2d")
+    # the checkpoint download runs for cascade jobs, they need the MedSAM2 weights
+    assert any("download_checkpoints.sh" in " ".join(c) for c in calls)

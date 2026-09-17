@@ -31,7 +31,8 @@ INPUT = Path(os.environ.get("LAUNCH_INPUT", "/kaggle/input"))
 MLFLOW_URI = os.environ.get("LAUNCH_MLFLOW", f"sqlite:///{WORK}/mlflow.db")
 
 # (kind, *args): zeroshot(model, prompt), large_ft(config), reeval_unet(config),
-# reeval_ft(config), reeval_head(config), incontext(config, shots, draw_seed)
+# reeval_ft(config), reeval_head(config), incontext(config, shots, draw_seed),
+# cascade(budget, ft_config or None)
 JOBS = [
     ("zeroshot", "sam2", "box"), ("zeroshot", "sam2", "point"),
     ("zeroshot", "medsam2", "box"), ("zeroshot", "medsam2", "point"),
@@ -49,7 +50,19 @@ JOBS = [
     ("incontext", "universeg_p05", 0, 0), ("incontext", "universeg_p10", 0, 0),
     ("incontext", "universeg_p25", 0, 0), ("incontext", "universeg_full", 0, 0),
     ("incontext", "seggpt_p25", 0, 1), ("incontext", "seggpt_p25", 0, 2),
+    # MedSAM2 zero-shot and fine-tuned behind boxes drawn from a trained model's
+    # own test predictions instead of the ground truth (the automatic-prompt
+    # ablation); the box drawer is BOX_SOURCE, its masks staged like checkpoints
+    ("cascade", "p05", None), ("cascade", "p05", "medsam2_ft_p05"),
+    ("cascade", "p10", None), ("cascade", "p10", "medsam2_ft_p10"),
+    ("cascade", "p25", None), ("cascade", "p25", "medsam2_ft_p25"),
+    ("cascade", "full", None), ("cascade", "full", "medsam2_ft_full"),
 ]
+# the arm whose saved test masks draw the cascade boxes, per budget. the
+# seed-0 U-Net by decision (2026-09-15); swap to nnunet_<budget> only if
+# nnU-Net beats the U-Net at 20 patients
+BOX_SOURCE = {"p05": "camus_unet2d_p05", "p10": "camus_unet2d_p10",
+              "p25": "camus_unet2d_p25", "full": "camus_unet2d"}
 # the SegGPT mask re-runs are deferred (2026-09-15): about 6 h of GPU for an
 # EF column on the arm that is last at every budget. Move them back into
 # JOBS when spare GPU time exists.
@@ -84,6 +97,13 @@ def stage_gated_weights() -> None:
         print(f"staged {mount_name} -> {target.relative_to(REPO_DIR)}", flush=True)
 
 
+def find_masks(out_name: str) -> Path:
+    matches = sorted(p for p in INPUT.glob(f"**/{out_name}/masks") if p.is_dir())
+    if not matches:
+        raise SystemExit(f"no masks/ for {out_name} under {INPUT}")
+    return matches[0].parent
+
+
 def find_checkpoint(out_rel: str, filename: str) -> Path:
     # attached kernel outputs and datasets both mount under /kaggle/input;
     # the checkpoint is found by its out_dir name, wherever that sits
@@ -103,6 +123,7 @@ def write_config(name: str, data_root: Path) -> tuple[Path, dict]:
     if cfg.get("train_subset"):
         cfg["train_subset"] = str(REPO_DIR / cfg["train_subset"])
     cfg["out_dir"] = str(WORK / cfg["out_dir"])
+    WORK.mkdir(parents=True, exist_ok=True)
     path = WORK / f"config_{name}.yaml"
     path.write_text(yaml.safe_dump(cfg))
     return path, cfg
@@ -131,7 +152,7 @@ def install(kinds: set[str]) -> None:
     if not REPO_DIR.exists():
         run(["git", "clone", "--depth", "1", REPO_URL, REPO_DIR])
     run([sys.executable, "-m", "pip", "install", "-q", REPO_DIR])
-    if kinds & {"zeroshot", "large_ft", "reeval_ft"}:
+    if kinds & {"zeroshot", "large_ft", "reeval_ft", "cascade"}:
         run(
             [sys.executable, "-m", "pip", "install", "-q",
              "git+https://github.com/facebookresearch/sam2.git"],
@@ -155,7 +176,7 @@ def main() -> None:
     else:
         install(kinds)
     # weights are fetched or staged on every start; both steps are idempotent
-    if kinds & {"zeroshot", "large_ft", "reeval_ft"}:
+    if kinds & {"zeroshot", "large_ft", "reeval_ft", "cascade"}:
         run(["bash", REPO_DIR / "scripts" / "download_checkpoints.sh"])
     if "reeval_head" in kinds:
         stage_gated_weights()
@@ -207,6 +228,18 @@ def main() -> None:
                 cmd += ["--shots", shots]
             if draw_seed:
                 cmd += ["--draw-seed", draw_seed]
+            run(cmd, cwd=REPO_DIR)
+        elif kind == "cascade":
+            _, budget, ft_config = job
+            box_source = find_masks(BOX_SOURCE[budget])
+            name = f"medsam2_ft_cascade_{budget}" if ft_config else f"medsam2_cascade_{budget}"
+            cmd = [sys.executable, "-m", "medseg_label_efficiency.eval_sam",
+                   "--model", "medsam2", "--prompt", "box", "--data-root", data_root,
+                   "--device", "cuda", "--box-source", box_source,
+                   "--out-dir", WORK / "outputs" / name, "--save-masks", *limit]
+            if ft_config:
+                _, cfg = write_config(ft_config, data_root)
+                cmd += ["--decoder-weights", find_checkpoint(cfg["out_dir"], "decoder_best.pt")]
             run(cmd, cwd=REPO_DIR)
         else:
             raise SystemExit(f"unknown job kind {kind!r}")
