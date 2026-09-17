@@ -48,6 +48,15 @@ def run(cmd, **kwargs):
     subprocess.run([str(c) for c in cmd], check=True, **kwargs)
 
 
+def tool(name: str) -> str:
+    # pip puts console scripts on the PATH (/usr/local/bin on Colab), which is
+    # not the interpreter's folder there; the venv on the laptop has both in one
+    found = shutil.which(name) or shutil.which(name, path=str(Path(sys.executable).parent))
+    if not found:
+        raise SystemExit(f"{name} not found; is nnunetv2 installed?")
+    return found
+
+
 def find_data_root() -> Path:
     for pattern in ("*", "*/*", "*/*/*", "*/*/*/*"):
         for candidate in sorted(INPUT.glob(pattern)):
@@ -106,8 +115,6 @@ def main() -> None:
     env = nnunet_env(results)
     raw = LOCAL / "nnUNet_raw" / DATASET_NAME
     preprocessed = LOCAL / "nnUNet_preprocessed" / DATASET_NAME
-    bin_dir = Path(sys.executable).parent
-
     if not (raw / "splits_final.json").exists():
         cmd = [sys.executable, REPO_DIR / "scripts" / "prepare_nnunet.py", "--data-root",
                data_root, "--raw-dir", LOCAL / "nnUNet_raw",
@@ -116,7 +123,7 @@ def main() -> None:
             cmd += ["--limit", "2"]
         run(cmd, cwd=REPO_DIR)
     if not (preprocessed / "nnUNetPlans.json").exists():
-        run([bin_dir / "nnUNetv2_plan_and_preprocess", "-d", DATASET_ID, "-c", CONFIG,
+        run([tool("nnUNetv2_plan_and_preprocess"), "-d", DATASET_ID, "-c", CONFIG,
              "--verify_dataset_integrity"], env=env)
         if args.smoke:
             set_smoke_batch_size(preprocessed)
@@ -128,7 +135,7 @@ def main() -> None:
         fold = FOLD_OF_BUDGET[budget]
         fold_dir = model_dir / f"fold_{fold}"
         if not (fold_dir / "checkpoint_final.pth").exists():
-            cmd = [bin_dir / "nnUNetv2_train", DATASET_ID, CONFIG, str(fold), "-tr", trainer,
+            cmd = [tool("nnUNetv2_train"), DATASET_ID, CONFIG, str(fold), "-tr", trainer,
                    "-device", args.device]
             if (fold_dir / "checkpoint_latest.pth").exists():
                 cmd.append("--c")
@@ -138,12 +145,12 @@ def main() -> None:
         for variant, extra in (("mirror", []), ("nomirror", ["--disable_tta"])):
             out = preds / variant
             if not complete(out, n_test):
-                run([bin_dir / "nnUNetv2_predict", "-i", raw / "imagesTs", "-o", out,
+                run([tool("nnUNetv2_predict"), "-i", raw / "imagesTs", "-o", out,
                      "-d", DATASET_ID, "-c", CONFIG, "-f", str(fold), "-tr", trainer,
                      "-device", args.device, *extra], env=env)
         cv_dir = model_dir / f"crossval_results_folds_{fold}"
         if not (cv_dir / "postprocessing.pkl").exists():
-            run([bin_dir / "nnUNetv2_find_best_configuration", DATASET_ID, "-c", CONFIG,
+            run([tool("nnUNetv2_find_best_configuration"), DATASET_ID, "-c", CONFIG,
                  "-tr", trainer, "-f", str(fold), "--disable_ensembling"], env=env)
         for variant, out_name, flags in (
             ("mirror", f"nnunet_{budget}", []),
@@ -151,7 +158,7 @@ def main() -> None:
         ):
             pp = preds / f"{variant}_pp"
             if not complete(pp, n_test):
-                run([bin_dir / "nnUNetv2_apply_postprocessing", "-i", preds / variant, "-o", pp,
+                run([tool("nnUNetv2_apply_postprocessing"), "-i", preds / variant, "-o", pp,
                      "-pp_pkl_file", cv_dir / "postprocessing.pkl",
                      "-plans_json", cv_dir / "plans.json",
                      "-dataset_json", cv_dir / "dataset.json"], env=env)
