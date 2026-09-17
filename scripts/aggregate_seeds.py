@@ -30,9 +30,13 @@ ARMS = {
     "universeg_k8": {b: f"universeg_{SUFFIX[b]}_k8" for b in BUDGETS},
     "universeg_k64": {b: f"universeg_{SUFFIX[b]}_k64" for b in (40, 100, 400)},
     "seggpt": {b: f"seggpt_{SUFFIX[b]}" for b in BUDGETS},
-    # automatic-prompt cascade: MedSAM2 behind the seed-0 U-Net's boxes
+    # automatic-prompt cascade: MedSAM2 behind boxes drawn from another arm's
+    # test predictions; the seed-0 U-Net rows are the box-drawer check, the
+    # nnU-Net rows (_nn) the reported version, since nnU-Net won at 20 patients
     "medsam2_cascade": {b: f"medsam2_cascade_{SUFFIX[b]}" for b in BUDGETS},
     "medsam2_ft_cascade": {b: f"medsam2_ft_cascade_{SUFFIX[b]}" for b in BUDGETS},
+    "medsam2_cascade_nn": {b: f"medsam2_cascade_nn_{SUFFIX[b]}" for b in BUDGETS},
+    "medsam2_ft_cascade_nn": {b: f"medsam2_ft_cascade_nn_{SUFFIX[b]}" for b in BUDGETS},
     "sam2_large_ft": {20: "sam2_large_ft_p05", 40: "sam2_large_ft_p10"},
     # nnU-Net v2 with its defaults (single seed by decision); the no-mirroring
     # inference of the same checkpoints is the footnote check

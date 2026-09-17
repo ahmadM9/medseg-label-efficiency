@@ -36,6 +36,9 @@ PAIRS = [
     # pre-declared 2026-09-15, before any nnU-Net run
     ("nnunet", "unet"),
     ("medsam2_ft", "nnunet"),
+    # pre-declared 2026-09-17, before the nnU-Net-box cascade ran: the fair
+    # automatic pipeline against the model that draws its boxes
+    ("medsam2_ft_cascade_nn", "nnunet"),
 ]
 FAMILY = {
     budget: [(a, b, m) for a, b in PAIRS for m in ("dice_mean", "dice_lv_myo")]
