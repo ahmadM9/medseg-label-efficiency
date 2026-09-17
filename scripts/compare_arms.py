@@ -33,6 +33,9 @@ PAIRS = [
     ("dino3_head", "dino2_head"),
     ("unet", "universeg"),
     ("universeg_k8", "seggpt"),
+    # pre-declared 2026-09-15, before any nnU-Net run
+    ("nnunet", "unet"),
+    ("medsam2_ft", "nnunet"),
 ]
 FAMILY = {
     budget: [(a, b, m) for a, b in PAIRS for m in ("dice_mean", "dice_lv_myo")]

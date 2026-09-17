@@ -35,6 +35,10 @@ CURVES = [
     ("dino2_head", "DINOv2 frozen + head", "#000000", "v", "-"),
     ("universeg", "UniverSeg in-context (K=32)", "#A6611A", "D", ":"),
     ("seggpt", "SegGPT in-context (K=8)", "#7B3294", "P", ":"),
+    # same strategy as the U-Net (train from scratch), so the same hue, told
+    # apart by the dashed line and marker; the palette checker found no free
+    # hue against the six above
+    ("nnunet", "nnU-Net (supervised)", "#0072B2", "x", "--"),
 ]
 # the zero-shot references: the same green as the fine-tuned MedSAM2 curve
 # because it is the same entity at zero labels

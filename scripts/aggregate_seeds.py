@@ -34,6 +34,10 @@ ARMS = {
     "medsam2_cascade": {b: f"medsam2_cascade_{SUFFIX[b]}" for b in BUDGETS},
     "medsam2_ft_cascade": {b: f"medsam2_ft_cascade_{SUFFIX[b]}" for b in BUDGETS},
     "sam2_large_ft": {20: "sam2_large_ft_p05", 40: "sam2_large_ft_p10"},
+    # nnU-Net v2 with its defaults (single seed by decision); the no-mirroring
+    # inference of the same checkpoints is the footnote check
+    "nnunet": {b: f"nnunet_{SUFFIX[b]}" for b in BUDGETS},
+    "nnunet_nomirror": {b: f"nnunet_nomirror_{SUFFIX[b]}" for b in BUDGETS},
 }
 # arms that were run with seeds 1 and 2; the rest is single seed by decision
 SEEDED = ("unet", "medsam2_ft", "dino3_head", "universeg")
