@@ -3,8 +3,8 @@
     python scripts/aggregate_seeds.py [--outputs outputs]
 
 For each arm and budget the seed-0 run lives in the committed out_dir and the
-extra seeds in <out_dir>_s1 and <out_dir>_s2 (the kaggle/seeds kernel names
-them so). Writes outputs/seeds/<arm>.json with, per budget, the number of
+extra seeds in <out_dir>_s1 and <out_dir>_s2 (the seed runs are named
+so). Writes outputs/seeds/<arm>.json with, per budget, the number of
 seeds found and mean, SD (sample SD, null below two seeds) and the values of
 every dice/hd95/overlap metric. make_figures.py draws the bands from it.
 """
