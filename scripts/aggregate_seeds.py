@@ -37,7 +37,13 @@ ARMS = {
     "medsam2_ft_cascade": {b: f"medsam2_ft_cascade_{SUFFIX[b]}" for b in BUDGETS},
     "medsam2_cascade_nn": {b: f"medsam2_cascade_nn_{SUFFIX[b]}" for b in BUDGETS},
     "medsam2_ft_cascade_nn": {b: f"medsam2_ft_cascade_nn_{SUFFIX[b]}" for b in BUDGETS},
-    "sam2_large_ft": {20: "sam2_large_ft_p05", 40: "sam2_large_ft_p10"},
+    # the fine-tuning triangle (single seed each): medsam2_ft vs sam2_ft varies
+    # only the medical pretraining, sam2_large_ft vs sam2_ft only the size
+    "sam2_ft": {b: f"sam2_ft_{SUFFIX[b]}" for b in BUDGETS},
+    "sam2_large_ft": {b: f"sam2_large_ft_{SUFFIX[b]}" for b in BUDGETS},
+    # the two generalist fine-tuned models behind nnU-Net boxes
+    "sam2_ft_cascade_nn": {b: f"sam2_ft_cascade_nn_{SUFFIX[b]}" for b in BUDGETS},
+    "sam2_large_ft_cascade_nn": {b: f"sam2_large_ft_cascade_nn_{SUFFIX[b]}" for b in BUDGETS},
     # nnU-Net v2 with its defaults (single seed by decision); the no-mirroring
     # inference of the same checkpoints is the footnote check
     "nnunet": {b: f"nnunet_{SUFFIX[b]}" for b in BUDGETS},

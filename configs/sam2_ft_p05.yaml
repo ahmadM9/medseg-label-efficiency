@@ -1,0 +1,17 @@
+# Pretraining ablation: SAM2.1-tiny decoder fine-tuning at the 5% budget (20 patients, seed-0
+# subset). Same architecture, size and recipe as the MedSAM2 runs, so the gap to
+# medsam2_ft is the value of medical pretraining under adaptation.
+dataset: camus
+data_root: data/camus
+model: sam2
+out_dir: outputs/sam2_ft_p05
+train_subset: configs/subsets/train_p05.txt
+batch_size: 16
+jitter_px: 5
+seed: 42
+
+training:
+  steps: 5000
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  val_interval: 250
