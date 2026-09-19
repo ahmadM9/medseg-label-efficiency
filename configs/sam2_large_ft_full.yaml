@@ -5,7 +5,6 @@ dataset: camus
 data_root: data/camus
 model: sam2_large
 out_dir: outputs/sam2_large_ft_full
-train_subset: None
 batch_size: 16
 jitter_px: 5
 seed: 42
