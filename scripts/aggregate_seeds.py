@@ -52,7 +52,9 @@ ARMS = {
     "nnunet_nomirror": {b: f"nnunet_nomirror_{SUFFIX[b]}" for b in BUDGETS},
 }
 # arms that were run with seeds 1 and 2; the rest is single seed by decision
-SEEDED = ("unet", "medsam2_ft", "dino3_head", "universeg")
+# (sam2_ft added 2026-09-19 so both sides of the medical-pretraining pair
+# carry error bars)
+SEEDED = ("unet", "medsam2_ft", "dino3_head", "universeg", "sam2_ft")
 EXTRA_SEEDS = (1, 2)
 # zero-shot rows have no budget; regenerated with per-image seeds in Stage C
 ZERO_SHOT = {
