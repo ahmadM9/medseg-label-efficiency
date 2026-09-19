@@ -1,0 +1,17 @@
+# Resolution control: SAM2.1-tiny decoder fine-tuning at MedSAM2's 512-pixel input, 5% budget (20 patients, seed-0 subset).
+# Same weights as sam2_ft, same recipe; only the input size differs, so the gap to sam2_ft
+# is the cost of 512 and the gap to medsam2_ft is medical pretraining at equal size.
+dataset: camus
+data_root: data/camus
+model: sam2_512
+out_dir: outputs/sam2_512_ft_p05
+train_subset: configs/subsets/train_p05.txt
+batch_size: 16
+jitter_px: 5
+seed: 42
+
+training:
+  steps: 5000
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  val_interval: 250

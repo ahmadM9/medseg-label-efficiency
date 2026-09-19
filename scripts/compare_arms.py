@@ -46,6 +46,11 @@ PAIRS = [
     ("sam2_large_ft", "sam2_ft"),
     ("sam2_ft_cascade_nn", "nnunet"),
     ("sam2_large_ft_cascade_nn", "nnunet"),
+    # pre-declared 2026-09-19, before the 512 control ran: medsam2 and sam2
+    # differ in input size as released (512 vs 1024), so the cost of 512 at
+    # fixed weights, and medical pretraining at fixed size
+    ("sam2_ft", "sam2_512_ft"),
+    ("medsam2_ft", "sam2_512_ft"),
 ]
 FAMILY = {
     budget: [(a, b, m) for a, b in PAIRS for m in ("dice_mean", "dice_lv_myo")]

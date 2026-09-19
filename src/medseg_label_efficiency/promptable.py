@@ -32,6 +32,14 @@ PROMPTABLE_MODELS = {
         # drop it into the installed package's config tree so hydra finds it.
         "vendored_config": "checkpoints/sam2.1_hiera_t512.yaml",
     },
+    # the stock tiny weights run at MedSAM2's 512 input: against "sam2" this
+    # isolates the input size, against "medsam2" the medical pretraining at
+    # equal size. added 2026-09-19 after the review found the two confounded
+    "sam2_512": {
+        "checkpoint": "checkpoints/sam2.1_hiera_tiny.pt",
+        "config": "configs/sam2.1/sam2.1_hiera_t512.yaml",
+        "vendored_config": "checkpoints/sam2.1_hiera_t512.yaml",
+    },
 }
 
 

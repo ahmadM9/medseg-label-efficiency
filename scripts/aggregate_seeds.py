@@ -41,6 +41,8 @@ ARMS = {
     # only the medical pretraining, sam2_large_ft vs sam2_ft only the size
     "sam2_ft": {b: f"sam2_ft_{SUFFIX[b]}" for b in BUDGETS},
     "sam2_large_ft": {b: f"sam2_large_ft_{SUFFIX[b]}" for b in BUDGETS},
+    # resolution control: the sam2_ft weights at MedSAM2's 512 input
+    "sam2_512_ft": {b: f"sam2_512_ft_{SUFFIX[b]}" for b in BUDGETS},
     # the two generalist fine-tuned models behind nnU-Net boxes
     "sam2_ft_cascade_nn": {b: f"sam2_ft_cascade_nn_{SUFFIX[b]}" for b in BUDGETS},
     "sam2_large_ft_cascade_nn": {b: f"sam2_large_ft_cascade_nn_{SUFFIX[b]}" for b in BUDGETS},
@@ -58,6 +60,7 @@ ZERO_SHOT = {
     "medsam2_box": "medsam2_box", "medsam2_point": "medsam2_point",
     "sam2_bplus_box": "sam2_bplus_box", "sam2_bplus_point": "sam2_bplus_point",
     "sam2_large_box": "sam2_large_box", "sam2_large_point": "sam2_large_point",
+    "sam2_512_box": "sam2_512_box", "sam2_512_point": "sam2_512_point",
 }
 
 

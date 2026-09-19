@@ -29,6 +29,16 @@ def test_promptable_registry_entries_are_complete():
         assert {"checkpoint", "config", "vendored_config"} <= set(entry), name
 
 
+def test_resolution_control_shares_weights_and_config():
+    # sam2_512 must be the stock tiny weights in MedSAM2's 512 config, or the
+    # pair (sam2_ft, sam2_512_ft) stops isolating the input size
+    assert PROMPTABLE_MODELS["sam2_512"]["checkpoint"] == PROMPTABLE_MODELS["sam2"]["checkpoint"]
+    assert PROMPTABLE_MODELS["sam2_512"]["config"] == PROMPTABLE_MODELS["medsam2"]["config"]
+    assert PROMPTABLE_MODELS["sam2_512"]["vendored_config"] == (
+        PROMPTABLE_MODELS["medsam2"]["vendored_config"]
+    )
+
+
 def test_incontext_registry_entries_are_complete():
     for name, entry in IN_CONTEXT_MODELS.items():
         assert {"kind", "source", "input_size", "training_data"} <= set(entry), name
